@@ -1272,6 +1272,7 @@ const FXSPEC={
     {sub:'Fishing'},
     {k:'aqFish',l:'Fishing',chips:[['Fish + line','both'],['Fish only','fish'],['Line only','line'],['Off','off']],v:'both'},
     {k:'aqFishN',l:'Fish',min:1,max:8,v:4,f:v=>v+' fish'},
+    {k:'aqPlop',l:'Plop sound',select:[[-1,'Random'],[0,'Droplet'],[1,'Bell'],[2,'Marimba'],[3,'Pluck'],[4,'Slap'],[5,'Gloop']],v:-1},
     {adv:1,k:'aqVis',l:'Visuals only (module)',toggle:1,v:false},
     {adv:1,sub:'Bubble details'},
     {adv:1,k:'aqBusy',l:'Bubble busy',min:0,max:100,v:50,f:pct},
@@ -1767,7 +1768,7 @@ function angelTick(){
 // ---- aqua: little rising "bloop" bubbles ----
 function bubble(a,midi,T){ // one bubble note, in the chosen Bubble voice
   const v=getV('fx','aqVoice')||'bub',f1=440*Math.pow(2,(midi-69)/12),out=ctx.createGain();out.connect(aq.bub);
-  const osc=(type,f,gain,att,dec,f0)=>{const o=ctx.createOscillator(),g=ctx.createGain();o.type=type;if(f0){o.frequency.setValueAtTime(f0,T);o.frequency.exponentialRampToValueAtTime(f,T+dec*.45);}else o.frequency.value=f;
+  const osc=(type,f,gain,att,dec,f0,gt)=>{const o=ctx.createOscillator(),g=ctx.createGain();o.type=type;if(f0){o.frequency.setValueAtTime(f0,T);o.frequency.exponentialRampToValueAtTime(f,T+(gt||dec*.45));}else o.frequency.value=f;
     g.gain.setValueAtTime(0,T);g.gain.linearRampToValueAtTime(gain*a,T+att);g.gain.exponentialRampToValueAtTime(.0005,T+att+dec);o.connect(g).connect(out);o.start(T);o.stop(T+att+dec+.05);};
   const filt=(type,gain,att,dec,lpA,lpB,det)=>{const o=ctx.createOscillator(),lp=ctx.createBiquadFilter(),g=ctx.createGain();o.type=type;o.frequency.value=f1;if(det)o.detune.value=(Math.random()-.5)*det;lp.type='lowpass';lp.frequency.setValueAtTime(f1*lpA,T);lp.frequency.exponentialRampToValueAtTime(f1*lpB,T+att+dec*.6);
     g.gain.setValueAtTime(0,T);g.gain.linearRampToValueAtTime(gain*a,T+att);g.gain.exponentialRampToValueAtTime(.0005,T+att+dec);o.connect(lp).connect(g).connect(out);o.start(T);o.stop(T+att+dec+.05);};
@@ -1776,7 +1777,8 @@ function bubble(a,midi,T){ // one bubble note, in the chosen Bubble voice
   else if(v==='kal'){osc('sine',f1,.15,.002,.6);osc('sine',f1*3.01,.05,.002,.12);osc('triangle',f1*2,.02,.001,.05);} // kalimba: metal tine
   else if(v==='pluck')filt('triangle',.2,.003,.55,8,1.2);                                                           // soft plucked string
   else if(v==='pad')filt('sawtooth',.06,.12,.8,2.5,2,14);                                                           // slow soft pad
-  else{const f0=f1*(.62+Math.random()*.12),dur=.09+Math.random()*.08;osc('sine',f1,.15,.004,dur,f0);osc('sine',f1*2,.027,.004,dur,f0*2);} // the original rising bubble
+  // a musical bloop: a quick scoop up into the note, then a clean round tone with an octave and a twelfth over it
+  else{osc('sine',f1,.17,.004,.36,f1*.8,.035);osc('sine',f1*2,.042,.004,.17);osc('sine',f1*3,.013,.003,.07);}
 }
 // bubble notes: the current bar's chord tones (or the key's pentatonic), high up, on the 16th-note grid
 // one shared harmony for the acid line and the bubbles: same key, same scale, same chord in each bar
@@ -2185,7 +2187,7 @@ function fishTick(){
     if(f.st==='swim'){f.x+=f.dir*f.sp*dt;f.d=Math.max(.06,Math.min(.97,f.d+Math.sin(now/1000*.7+f.ph)*.03*dt));if(f.x>1.25||f.x<-.25){f.dir=-f.dir;f.d=.1+Math.random()*.85;f.pal=Math.floor(Math.random()*FISHPAL.length);}}
     else if(f.st==='go'){const dx=hx-f.x,dd=FISH.hd-f.d,l=Math.hypot(dx,dd)||1;f.dir=dx>0?1:-1;f.x+=dx/l*.22*dt;f.d+=dd/l*.22*dt;
       if(l<.035&&FISH.phase==='idle'){FISH.phase='hooked';FISH.t=0;FISH.hooked=f;f.st='hooked';FISH.dip=1;FISH.eaten=true;
-        if(audible){const T=ctx.currentTime,b=getV('fx','aqBiteFx')/100*amp;fishSnd.plop(T,b);fishSnd.splash(T+.02,b*.7,.25);fishSnd.gulp(T,b);}}}
+        if(audible){const T=ctx.currentTime,b=getV('fx','aqBiteFx')/100*amp;fishSnd.plop(T,b,plopPick());fishSnd.splash(T+.02,b*.7,.25);fishSnd.gulp(T,b);}}}
   }
   // bites
   if(lineOn&&fishOn&&FISH.phase==='idle'){FISH.cool-=dt;FISH.hd+=(hookT-FISH.hd)*Math.min(1,dt*2);
@@ -2201,7 +2203,7 @@ function fishTick(){
   else if(FISH.phase==='reel'){FISH.t+=dt;FISH.hd=FISH.d0*(1-Math.min(1,FISH.t/1.4));if(H){H.x=hx+Math.sin(FISH.t*30)*.01;H.d=FISH.hd;}
     if(FISH.t>=1.4){FISH.phase='jump';FISH.t=0;if(H){H.st='jump';H.vy=-1.1;H.y=0;H.vx=(Math.random()<.5?-1:1)*.25;}splashAt(hx,10);if(audible)fishSnd.splash(ctx.currentTime,getV('fx','aqBiteFx')/100*amp,.45);}}
   else if(FISH.phase==='jump'){FISH.t+=dt;if(H){H.vy+=2.6*dt;H.y+=H.vy*dt;H.x+=H.vx*dt;H.d=H.y;}
-    if(FISH.t>.85){if(H){splashAt(H.x,8);if(audible)fishSnd.plop(ctx.currentTime,getV('fx','aqBiteFx')/100*amp*.6);Object.assign(H,{st:'swim',x:H.vx>0?1.2:-.2,d:.2+Math.random()*.7,dir:H.vx>0?-1:1,pal:Math.floor(Math.random()*FISHPAL.length)});}
+    if(FISH.t>.85){if(H){splashAt(H.x,8);if(audible)fishSnd.plop(ctx.currentTime,getV('fx','aqBiteFx')/100*amp*.6,plopPick());Object.assign(H,{st:'swim',x:H.vx>0?1.2:-.2,d:.2+Math.random()*.7,dir:H.vx>0?-1:1,pal:Math.floor(Math.random()*FISHPAL.length)});}
       FISH.phase='idle';FISH.hooked=null;FISH.eaten=false;FISH.hd=0;FISH.cool=1.5+Math.random()*2.5;}}
   for(const p of FISH.spl){p.vy+=2.4*dt;p.x+=p.vx*dt;p.y+=p.vy*dt;p.l-=dt*1.2;}FISH.spl=FISH.spl.filter(p=>p.l>0);
 }
@@ -2210,17 +2212,22 @@ let acVisAmt=0,acVisAt=0;
 function acVisTick(){const now=performance.now(),dt=Math.min(.1,(now-(acVisAt||now))/1000);acVisAt=now;
   const tgt=acVisLive()?.3+.65*(1-fx.acidM.gy):0;
   acVisAmt+=(tgt-acVisAmt)*Math.min(1,dt*3.2);if(acVisAmt<.003)acVisAmt=0;}
+const plopPick=()=>{const v=+getV('fx','aqPlop');return v>=0?v:null;};
 function splashAt(x,n){for(let i=0;i<n;i++)FISH.spl.push({x,y:0,vx:(Math.random()-.5)*.35,vy:-.6-Math.random()*.8,l:1});}
 function pixLine(c,x0,y0,x1,y1,col){x0=Math.round(x0);y0=Math.round(y0);x1=Math.round(x1);y1=Math.round(y1);const dx=Math.abs(x1-x0),dy=-Math.abs(y1-y0),sx=x0<x1?1:-1,sy=y0<y1?1:-1;let e=dx+dy;c.fillStyle=col;
   for(let k=0;k<400;k++){c.fillRect(x0,y0,1,1);if(x0===x1&&y0===y1)break;const e2=2*e;if(e2>=dy){e+=dy;x0+=sx;}if(e2<=dx){e+=dx;y0+=sy;}}}
-// the dose, for the big viewer only: the module panels and the pads keep their painted fish
-function radLevel(key){
-  const k=String(key||'').replace(/n$/,'');
-  return (k==='viewer'||k==='recv')?(+getV('viewer','vrad')||0)/100:0;
-}
+// the big viewer (and the canvas that gets recorded); module panels and pads are not it
+const isViewer=key=>{const k=String(key||'').replace(/n$/,'');return k==='viewer'||k==='recv';};
+// the dose, for the viewer only: the module panels and the pads keep their painted fish
+function radLevel(key){return isViewer(key)?(+getV('viewer','vrad')||0)/100:0;}
 const RAD_BONES=.5; // Hot and above: the fish come up as x-rays
-function drawFish(c,cx,cy,f,t,bones){
+function drawFish(c,cx,cy,f,t,bones,glow){
   const P=FISHPAL[f.pal],L=Math.round(5+f.size*4),Hh=Math.round(2+f.size*1.6),dir=f.dir,sw=f.st==='hooked'?Math.sin(t*40)*1.2:Math.sin(t*6+f.ph)*.6;
+  if(glow>0){ // acid in the water: the fish light up in it
+    const q=Math.min(1,glow);
+    for(let i=0;i<L;i++){const u=(i/(L-1))*2-1,h=Math.max(1,Math.round(Hh*Math.sqrt(Math.max(0,1-u*u*.85)))),x=Math.round(cx+u*L/2*dir);
+      c.fillStyle=`rgba(150,255,40,${(.3+.55*q).toFixed(2)})`;c.fillRect(x,Math.round(cy-h-2),1,h*2+5);}
+  }
   if(bones)return fishBones(c,cx,cy,L,Hh,dir,sw);
   for(let i=0;i<L;i++){const u=(i/(L-1))*2-1,h=Math.max(1,Math.round(Hh*Math.sqrt(Math.max(0,1-u*u*.85)))),x=Math.round(cx+u*L/2*dir);
     c.fillStyle=P[2];c.fillRect(x,Math.round(cy-h-1),1,h*2+2);c.fillStyle=P[0];c.fillRect(x,Math.round(cy-h),1,h*2);c.fillStyle=P[1];c.fillRect(x,Math.round(cy+1),1,Math.max(1,h-1));}
@@ -2242,12 +2249,12 @@ function fishBones(c,cx,cy,L,Hh,dir,sw){
   const tx=Math.round(cx-dir*(L/2+1)),ty=Math.round(cy+sw);
   c.fillStyle=dim;c.fillRect(tx-(dir>0?2:0),ty-2,1,5);c.fillRect(tx-(dir>0?1:0),ty,2,1);
 }
-function drawFishing(c,lw,lh,sL,t,layer,bones){
+function drawFishing(c,lw,lh,sL,t,layer,bones,glow){
   const mode=getV('fx','aqFish'),fishOn=mode==='both'||mode==='fish',lineOn=mode==='both'||mode==='line';if(mode==='off')return;
   const wh=lh-sL,Y=d=>sL+2+d*(wh-6),hx=Math.round(Math.max(2,Math.min(lw-3,FISH.px*lw))),bx=hx+Math.round(Math.sin(t*1.3)*1),by=sL+Math.round(Math.sin(bx*.35+t*2.2)*1.1)-1+Math.round(FISH.dip*3);
   const hy=Math.max(by+3,Math.round(Y(FISH.hd??.5)));
   if(layer==='under'){
-    if(fishOn)for(const f of FISH.fish){if(f.st==='jump')continue;drawFish(c,f.x*lw,Y(f.d),f,t,bones);}
+    if(fishOn)for(const f of FISH.fish){if(f.st==='jump')continue;drawFish(c,f.x*lw,Y(f.d),f,t,bones,glow);}
     if(lineOn){pixLine(c,bx,by+3,hx+Math.round(Math.sin(t*.9)*1),hy,'rgba(220,230,240,.75)');
       const k=hx+Math.round(Math.sin(t*.9)*1); // hook: a little silver J with a barb
       c.fillStyle='#8892a0';[[0,0],[0,1],[0,2],[0,3],[1,4],[2,4],[3,3],[3,2]].forEach(([x,y])=>c.fillRect(k+x,hy+y,1,1));c.fillStyle='#eef3f8';c.fillRect(k,hy,1,2);c.fillRect(k+3,hy+1,1,1);
@@ -2260,7 +2267,7 @@ function drawFishing(c,lw,lh,sL,t,layer,bones){
       c.fillStyle='#ffd23a';c.fillRect(bx,by-4,1,2);
       for(let dy=-2;dy<=2;dy++){const w=dy===-2||dy===2?1:2;c.fillStyle='#1a1a2e';c.fillRect(bx-w-1,by+dy,w*2+3,1);c.fillStyle=dy<=0?'#e3262e':'#ffffff';c.fillRect(bx-w,by+dy,w*2+1,1);}
       c.fillStyle='#ff8a8a';c.fillRect(bx-1,by-1,1,1);}
-    if(fishOn)for(const f of FISH.fish)if(f.st==='jump')drawFish(c,f.x*lw,sL-(-f.y)*wh*.9,f,t,bones); // the leap out of the water
+    if(fishOn)for(const f of FISH.fish)if(f.st==='jump')drawFish(c,f.x*lw,sL-(-f.y)*wh*.9,f,t,bones,glow); // the leap out of the water
     for(const p of FISH.spl){c.fillStyle=p.l>.5?'#e8fbff':'#7fd8f0';c.fillRect(Math.round(p.x*lw),Math.round(sL+p.y*wh*.6),1,1);}
   }
 }
@@ -2304,12 +2311,12 @@ function drawScene(g,W,H,d,a,key){
       const bx=b.x*lw,by=b.y*lh,r=Math.max(1,b.r*lm);
       pRing(c,bx,by,r,'#d8f8ff');if(r>=2){c.fillStyle='#ffffff';c.fillRect(Math.round(bx-r*.45),Math.round(by-r*.45),r>=4?2:1,r>=4?2:1);c.fillStyle='#7fd8f0';c.fillRect(Math.round(bx+r*.4),Math.round(by+r*.4),1,1);}}
     S.bub=S.bub.filter(b=>b.y*lh>sL+1);
-    const bones=radLevel(key)>=RAD_BONES;
-    drawFishing(c,lw,lh,sL,t,'under',bones);
+    const bones=radLevel(key)>=RAD_BONES,fglow=isViewer(key)?aca:0; // acid in the water lights the fish up
+    drawFishing(c,lw,lh,sL,t,'under',bones,fglow);
     c.restore();
     // the surface: a rolling pixel wave line
     for(let x=0;x<lw;x++){const yy=sL+Math.round(Math.sin(x*.35+t*2.2)*1.1+Math.sin(x*.13-t*1.3)*.8);c.fillStyle='#e8fbff';c.fillRect(x,yy,1,1);c.fillStyle='#5fc8e0';c.fillRect(x,yy+1,1,1);}
-    drawFishing(c,lw,lh,sL,t,'over',bones);
+    drawFishing(c,lw,lh,sL,t,'over',bones,fglow);
   }else S.bub.length=0;
   if(aca>0){
     // warped partial inversion: drifting colour bands in "difference" mode
