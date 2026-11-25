@@ -2307,9 +2307,12 @@ function drawAquaMod(){
 /* ---------- ANGEL VOICES module: a harp of light ---------- */
 const angelSpk=[];
 function drawAngelMod(){
-  const c=UI.angelCan;fitCanvas(c);const W=c.width,H=c.height;if(!W||!H)return;const g=c.getContext('2d'),d=devicePixelRatio||1,F=fx.angelM,t=performance.now()/1000;
+  const c=UI.angelCan;fitCanvas(c);const W=c.width,H=c.height;if(!W||!H)return;const out=c.getContext('2d'),d=devicePixelRatio||1,F=fx.angelM,t=performance.now()/1000;
+  let B=padBuf.angelM;if(!B||B.width!==W||B.height!==H){B=padBuf.angelM=document.createElement('canvas');B.width=W;B.height=H;}const g=B.getContext('2d');
   const notes=(an.notes&&an.notes.length?an.notes:angelVoicing(lenS?heardPos()/sr:0)),n=notes.length,singing=j=>F.all||F.latch||[...F.touches.values()].some(p=>p.part===j);
-  const bg=g.createLinearGradient(0,0,0,H);bg.addColorStop(0,'#fff3c8');bg.addColorStop(.35,'#b89cff');bg.addColorStop(1,'#1c1040');g.fillStyle=bg;g.fillRect(0,0,W,H);
+  // no background of its own: the drifting desktop clouds show through, lined up with the real sky behind the window
+  angelSky(g,c,W,H);
+  const sh=g.createLinearGradient(0,H*.3,0,H);sh.addColorStop(0,'rgba(40,20,90,0)');sh.addColorStop(.7,'rgba(34,16,80,.35)');sh.addColorStop(1,'rgba(24,10,60,.75)');g.fillStyle=sh;g.fillRect(0,0,W,H); // shading toward the bottom
   // god rays
   g.save();g.globalCompositeOperation='lighter';
   for(let k=0;k<7;k++){const a=-Math.PI/2+Math.sin(t*.15+k*1.7)*.9,w=.06+.04*Math.sin(t*.3+k);g.fillStyle=`rgba(255,240,200,${(.05+.04*Math.sin(t*.7+k)).toFixed(3)})`;
@@ -2322,7 +2325,7 @@ function drawAngelMod(){
     g.fillStyle=gl;g.fillRect(x0,top,x1-x0,H-top);
     g.save();g.strokeStyle=on?'rgba(255,255,240,.95)':'rgba(255,240,200,.35)';g.lineWidth=(on?3:1.5)*d;if(on){g.shadowColor='#ffd860';g.shadowBlur=16*d;}
     const wob=on?Math.sin(t*14+j)*2*d:0;g.beginPath();g.moveTo(cx,top);g.quadraticCurveTo(cx+wob,(top+H)/2,cx,H);g.stroke();g.restore();
-    g.font=`700 ${Math.round(12*d)}px ${canvasFont}`;g.textAlign='center';g.fillStyle=on?'#fff':'rgba(255,245,220,.75)';g.fillText(NOTE[notes[j]%12]+(Math.floor(notes[j]/12)-1),cx,H-7*d);
+    g.font=`700 ${Math.round(12*d)}px ${canvasFont}`;g.textAlign='center';{const lb=NOTE[notes[j]%12]+(Math.floor(notes[j]/12)-1);g.lineWidth=3*d;g.strokeStyle='rgba(20,8,50,.85)';g.strokeText(lb,cx,H-8*d);g.fillStyle=on?'#fff':'rgba(255,245,220,.9)';g.fillText(lb,cx,H-8*d);}
     if(on&&Math.random()<.12)angelSpk.push({x:cx/W+(Math.random()-.5)*.06,y:.88,v:.35+Math.random()*.35,life:1,c:j});}
   // halo bar: hold for the full choir
   const ha=F.all||F.latch;g.save();g.strokeStyle=ha?'#fff6c0':'rgba(255,230,150,.8)';g.lineWidth=(ha?4:2)*d;if(ha){g.shadowColor='#ffd860';g.shadowBlur=18*d;}
@@ -2337,6 +2340,16 @@ function drawAngelMod(){
   if(F.on){g.font=`700 ${Math.round(Math.min(W,H)*.16)}px ${canvasFont}`;g.textAlign='center';g.fillStyle='rgba(255,255,255,.22)';g.fillText(VOWEL_NAMES[Math.min(4,Math.round(Math.max(0,Math.min(1,F.vowel))*4))],W/2,H*.62);}
   g.font=`${Math.round(10*d)}px ${canvasFont}`;g.textAlign='left';g.fillStyle='rgba(255,250,235,.85)';
   g.fillText(`${({u:'Unison',f:'Fifths',t:'Triad',s:'Seventh',c:'Cluster',m:'Melody + choir'})[getV('fx','anHarm')]} · ${getV('fx','anVoices')} voices · ${({chamber:'Chamber',hall:'Hall',cath:'Cathedral',heaven:'Heaven',shimmer:'Shimmer'})[getV('fx','anRev')]}`,6*d,top+14*d);
+  // the same curved glass as the FX pads
+  const k=.06;crtBegin(out,W,H,d);crtWarp(B,out,W,H,d,k,'angelM');crtEnd(out,W,H,d,k,.22);
+}
+let skyImg=null;
+function angelSky(g,c,W,H){
+  if(!skyImg){skyImg=new Image();const m=/url\(["']?(.*?)["']?\)/.exec(getComputedStyle($('#deskImg')).backgroundImage);if(m)skyImg.src=m[1];}
+  if(!skyImg.complete||!skyImg.naturalWidth){g.fillStyle='#5a8fd6';g.fillRect(0,0,W,H);return;}
+  const r=$('#deskImg').getBoundingClientRect(),cr=c.getBoundingClientRect(),k=W/Math.max(1,cr.width);
+  const s=Math.max(r.width/skyImg.naturalWidth,r.height/skyImg.naturalHeight),dw=skyImg.naturalWidth*s,dh=skyImg.naturalHeight*s; // background-size: cover
+  g.drawImage(skyImg,(r.left+(r.width-dw)/2-cr.left)*k,(r.top+(r.height-dh)/2-cr.top)*k,dw*k,dh*k);
 }
 /* ---------- ACID 303 module: squelch pad + 16 step lights ---------- */
 let acidLedKey='';
