@@ -710,7 +710,7 @@ async function ensureAudio(){
   ac.lp=ctx.createBiquadFilter();ac.lp.type='lowpass';ac.lp.frequency.value=20000;ac.lp.Q.value=0;
   ac.dry=ctx.createGain();ac.wet=ctx.createGain();ac.wet.gain.value=0;ac.sh=ctx.createWaveShaper();ac.sh.oversample='2x';
   ac.lp2=ctx.createBiquadFilter();ac.lp2.type='lowpass';ac.lp2.frequency.value=20000;ac.lp2.Q.value=0;
-  aq.pk.connect(ac.lp).connect(ac.lp2);ac.lp2.connect(ac.dry).connect(bus);ac.lp2.connect(ac.sh).connect(ac.wet).connect(bus);
+  aq.pk.connect(ac.lp).connect(ac.lp2);an.trk=ctx.createGain();an.trk.connect(bus);ac.lp2.connect(ac.dry).connect(an.trk);ac.lp2.connect(ac.sh).connect(ac.wet).connect(an.trk); // an.trk: the song, so the voices can duck it
   // 303-style mono synth: saw/square -> two resonant low-passes (24 dB) -> amp -> a bit of grit
   sy.osc=ctx.createOscillator();sy.osc.type='sawtooth';sy.osc.frequency.value=55;
   sy.f1=ctx.createBiquadFilter();sy.f1.type='lowpass';sy.f2=ctx.createBiquadFilter();sy.f2.type='lowpass';sy.f1.frequency.value=sy.f2.frequency.value=200;
@@ -720,8 +720,12 @@ async function ensureAudio(){
   // ANGEL VOICES: detuned saws -> vowel formants -> amp -> dry + its own reverb
   an.mix=ctx.createGain();an.fsum=ctx.createGain();an.f=[0,1,2].map(()=>{const f=ctx.createBiquadFilter();f.type='bandpass';f.Q.value=9;an.mix.connect(f);const g=ctx.createGain();f.connect(g).connect(an.fsum);return {f,g};});
   an.air=ctx.createBiquadFilter();an.air.type='lowpass';an.air.frequency.value=2600;an.airG=ctx.createGain();an.airG.gain.value=.18;an.mix.connect(an.air).connect(an.airG).connect(an.fsum);
+  an.raw=ctx.createGain();an.raw.gain.value=0;an.mix.connect(an.raw).connect(an.fsum);          // un-filtered tone (organ, glass, pad)
+  { const nb=ctx.createBuffer(1,ctx.sampleRate*2,ctx.sampleRate),nd=nb.getChannelData(0);for(let i=0;i<nd.length;i++)nd[i]=Math.random()*2-1;
+    an.noise=ctx.createBufferSource();an.noise.buffer=nb;an.noise.loop=true;an.brG=ctx.createGain();an.brG.gain.value=0;an.noise.connect(an.brG);an.f.forEach(o=>an.brG.connect(o.f));an.noise.start(); } // breath
   an.vca=ctx.createGain();an.vca.gain.value=0;an.fsum.connect(an.vca);
   an.dry=ctx.createGain();an.conv=ctx.createConvolver();an.wet=ctx.createGain();an.vca.connect(an.dry).connect(bus);an.vca.connect(an.conv).connect(an.wet).connect(bus);
+  an.harpOut=ctx.createGain();an.harpOut.connect(bus);an.harpOut.connect(an.conv);
   an.lfo=ctx.createOscillator();an.lfo.frequency.value=5.1;an.lfoG=ctx.createGain();an.lfoG.gain.value=0;an.lfo.connect(an.lfoG);an.lfo.start();
   bus.connect(comp);
   bus.connect(echoSend).connect(echoDelay);echoDelay.connect(echoTone).connect(echoFb).connect(echoDelay);echoDelay.connect(comp);
@@ -1169,9 +1173,9 @@ const SPEC={
     {k:'spinLen',l:'Spin (beats)',min:10,max:200,v:50,f:v=>(v/100).toFixed(2)}
   ]
 };
-const AXFX=[['','None'],['glitch','Glitch'],['warble','Warble'],['lpf','Low-pass'],['hpf','High-pass'],['crush','Bitcrush'],['echo','Echo'],['reverb','Reverb'],['gate','Gate'],['pup','Pitch up'],['pdn','Pitch down'],['ring','Ring mod'],['smear','Smear'],['aqua','Aqua'],['acid','Acid']];
+const AXFX=[['','None'],['glitch','Glitch'],['warble','Warble'],['lpf','Low-pass'],['hpf','High-pass'],['crush','Bitcrush'],['echo','Echo'],['reverb','Reverb'],['gate','Gate'],['pup','Pitch up'],['pdn','Pitch down'],['ring','Ring mod'],['smear','Smear'],['aqua','Aqua'],['acid','Acid'],['voices','Angel voices'],['harp','Angel harp']];
 const FXNAME=Object.fromEntries(AXFX);
-const FXCOL={glitch:'#22d3ee',warble:'#a78bfa',lpf:'#60a5fa',hpf:'#34d399',crush:'#f87171',echo:'#fbbf24',reverb:'#c084fc',gate:'#38bdf8',pup:'#9b6bff',pdn:'#6b5bff',pitch:'#9b6bff',ring:'#ff3b8b',smear:'#6bff5a',aqua:'#00e0c0',acid:'#c6ff00'};
+const FXCOL={glitch:'#22d3ee',warble:'#a78bfa',lpf:'#60a5fa',hpf:'#34d399',crush:'#f87171',echo:'#fbbf24',reverb:'#c084fc',gate:'#38bdf8',pup:'#9b6bff',pdn:'#6b5bff',pitch:'#9b6bff',ring:'#ff3b8b',smear:'#6bff5a',aqua:'#00e0c0',acid:'#c6ff00',voices:'#ffe08a',harp:'#ffb0e0'};
 const FXGROUP={pup:'pitch',pdn:'pitch'};
 const FXSPEC={
   warble:[{h:'WARBLE'},
@@ -1239,15 +1243,21 @@ const FXSPEC={
   angel:[{h:'ANGEL VOICES'},
     {k:'anVis',l:'Visuals only (module)',toggle:1,v:false},
     {k:'anHarm',l:'Harmony',chips:[['Unison','u'],['Fifths','f'],['Triad','t'],['Seventh','s'],['Cluster','c'],['Melody + choir','m']],v:'t'},
+    {k:'anType',l:'Voice type',chips:[['Choir','choir'],['Glass','glass'],['Warm pad','pad'],['Organ','organ'],['Robot','robot'],['Breathy','breath']],v:'choir'},
     {k:'anVoices',l:'Voices per part',min:1,max:8,v:4,f:v=>v+(v>1?' voices':' voice')},
-    {k:'anOct',l:'Octave',chips:[['Low',-12],['Mid',0],['High',12],['Heaven',24]],v:0},
+    {k:'anOct',l:'Octave',chips:[['Bass',-24],['Baritone',-12],['Mid',0],['High',12],['Heaven',24]],v:0},
     {k:'anPitch',l:'Pitch',min:-12,max:12,v:0,f:v=>(v>0?'+':'')+v+' st'},
     {k:'anRev',l:'Reverb',chips:[['Chamber','chamber'],['Hall','hall'],['Cathedral','cath'],['Heaven','heaven'],['Shimmer','shimmer']],v:'cath'},
     {k:'anSpace',l:'Reverb amount',min:0,max:100,v:65,f:pct},
     {k:'anVib',l:'Vibrato',min:0,max:100,v:40,f:pct},
     {k:'anFollow',l:'Chord changes',chips:[['Every beat (fastest)','fast'],['Every half bar','beat'],['Every bar','bar'],['Hold (steady)','hold']],v:'fast'},
     {k:'anGlide',l:'Glide',min:0,max:300,v:25,f:v=>v?v+' ms':'instant'},
-    {k:'anLevel',l:'Level',min:0,max:100,v:70,f:pct}],
+    {k:'anLevel',l:'Voices level',min:0,max:250,v:100,f:pct},
+    {k:'anDuck',l:'Duck the track',min:0,max:100,v:0,f:pct},
+    {k:'anHarp',l:'Harp arp',min:0,max:250,v:80,f:v=>v?v+'%':'off'},
+    {k:'anArp',l:'Arp pattern',chips:[['Up','up'],['Down','down'],['Up/down','ud'],['Random','rnd']],v:'up'},
+    {k:'anArpRate',l:'Arp speed',chips:[['1/8',.5],['1/16',.25],['1/32',.125]],v:.25},
+    {k:'anArpOct',l:'Arp range',chips:[['1 oct',1],['2 oct',2],['3 oct',3]],v:2}],
   pitch:[{h:'PITCH'},
     {k:'pMode',l:'Mode',chips:[['Speed','s'],['Keep tempo','k'],['Keep pitch','t']],v:'k'},
     {k:'pRange',l:'Range',min:1,max:24,v:12,f:v=>v+' st'},
@@ -1347,7 +1357,7 @@ function updateReverb(){
 
 /* ---------- effect state -> audio + UI ---------- */
 let UI={pads:{},cards:{},padCan:{},gateCan:null,stutPads:[]};
-let eff={glitch:0,warble:0,lpf:0,hpf:0,crush:0,echo:0,reverb:0,gate:0,pup:0,pdn:0,ring:0,smear:0,aqua:0,acid:0};
+let eff={glitch:0,warble:0,lpf:0,hpf:0,crush:0,echo:0,reverb:0,gate:0,pup:0,pdn:0,ring:0,smear:0,aqua:0,acid:0,voices:0,harp:0};
 function refreshCards(){
   for(const [k,c] of Object.entries(UI.cards)){
     const on=k==='pd'?(fx.pump.on||fx.duck.on):k==='stut'?!!fx.stut.active:fx[k]&&fx[k].on;
@@ -1357,7 +1367,7 @@ function refreshCards(){
 function mark(key,on){const p=UI.pads[key];if(p)p.classList.toggle('on',!!on);refreshCards();}
 const dz=v=>v<.06?0:(v-.06)/.94;
 function pushFX(){
-  eff={glitch:0,warble:0,lpf:0,hpf:0,crush:0,echo:0,reverb:0,gate:0,pup:0,pdn:0,ring:0,smear:0,aqua:0,acid:0};
+  eff={glitch:0,warble:0,lpf:0,hpf:0,crush:0,echo:0,reverb:0,gate:0,pup:0,pdn:0,ring:0,smear:0,aqua:0,acid:0,voices:0,harp:0};
   for(const id of ['xy','xy2']){
     const F=fx[id];if(!F.on||!onPage(id))continue;
     const ax=getV(id,'ax'),ay=getV(id,'ay');
@@ -1554,7 +1564,15 @@ function detectKey(buf){ // strongest bass note (root + its fifth) over ~45 s
   }catch(e){return 9;}
 }
 // ---- ANGEL VOICES: a choir that sings the song's chords ----
-const VOWELS=[[300,870,2240],[450,800,2830],[730,1090,2440],[530,1840,2480],[270,2290,3010]].map(v=>v.map(f=>f*1.18)); // OO OH AH EH EE (lifted a little: angels)
+const VOWELS=[[300,870,2240],[450,800,2830],[730,1090,2440],[530,1840,2480],[270,2290,3010]]; // OO OH AH EH EE (adult male; lifted for higher voices)
+const VTYPES={choir:{w:'sawtooth',fm:1,raw:0,br:.04,q:9,lv:1},glass:{w:'glass',fm:.25,raw:.9,br:0,q:6,lv:.9},pad:{w:'square',fm:.45,raw:.45,br:0,q:5,lv:.75},
+  organ:{w:'organ',fm:.15,raw:1,br:0,q:5,lv:.8},robot:{w:'sawtooth',fm:1.2,raw:0,br:0,q:22,lv:1.1},breath:{w:'triangle',fm:1,raw:0,br:.45,q:7,lv:1.2}};
+const waveCache={};
+function voiceWave(w){
+  if(w==='organ'||w==='glass'){if(!waveCache[w]){const h=w==='organ'?[0,1,.8,.6,0,.45,0,.3,.2]:[0,1,0,.35,0,0,.12,0,0,.05];const re=new Float32Array(h.length),im=Float32Array.from(h);waveCache[w]=ctx.createPeriodicWave(re,im);}return waveCache[w];}
+  return null;
+}
+function setVoiceWave(o,w){const pw=voiceWave(w);if(pw)o.setPeriodicWave(pw);else o.type=w;}
 const VOWEL_NAMES=['OOH','OH','AAH','EH','EE'];
 const irCache={};
 function makeIR(type){ // generated room responses for each reverb flavour
@@ -1586,16 +1604,48 @@ function angelBuild(parts,per){
   for(const v of an.voices){try{v.o.stop();}catch(e){}v.o.disconnect();}for(const p of an.parts)p.g.disconnect();
   an.voices=[];an.parts=[];
   for(let j=0;j<parts;j++){const pg=ctx.createGain();pg.gain.value=0;pg.connect(an.mix);an.parts.push({g:pg,on:false});
-    for(let k=0;k<per;k++){const o=ctx.createOscillator(),g=ctx.createGain(),p=ctx.createStereoPanner();o.type='sawtooth';
+    for(let k=0;k<per;k++){const o=ctx.createOscillator(),g=ctx.createGain(),p=ctx.createStereoPanner();setVoiceWave(o,(VTYPES[getV('fx','anType')]||VTYPES.choir).w);
       const dn=per>1?k/(per-1)-.5:0,jit=(Math.random()-.5)*4;o.detune.value=dn*26+jit;p.pan.value=dn*.9;g.gain.value=.55/Math.sqrt(per*parts);
       an.lfoG.connect(o.detune);o.connect(g).connect(p).connect(pg);o.start();an.voices.push({o,p,j,dn,jit});}}
   an.shape=parts+'x'+per;
 }
+// ---- the harp: plucked notes running over the current chord, on the beat grid ----
+function pluck(midi,T,vel){
+  const f=440*Math.pow(2,(midi-69)/12),dur=Math.max(.5,1.6-(midi-60)*.02),o=ctx.createOscillator(),o2=ctx.createOscillator(),g2=ctx.createGain(),lp=ctx.createBiquadFilter(),g=ctx.createGain();
+  o.type='triangle';o.frequency.value=f;o2.type='sine';o2.frequency.value=f*2;g2.gain.value=.35;
+  lp.type='lowpass';lp.frequency.setValueAtTime(Math.min(12000,f*10),T);lp.frequency.exponentialRampToValueAtTime(Math.max(300,f*1.5),T+dur*.8);
+  g.gain.setValueAtTime(0,T);g.gain.linearRampToValueAtTime(.28*vel,T+.003);g.gain.exponentialRampToValueAtTime(.0004,T+dur);
+  o.connect(lp);o2.connect(g2).connect(lp);lp.connect(g).connect(an.harpOut);o.start(T);o2.start(T);o.stop(T+dur+.05);o2.stop(T+dur+.05);
+}
+let hNext=null;
+function harpTick(amt){
+  if(!an.harpOut||!(amt>0)||!playing||!lenS||!bpm||rateR<=.05){hNext=null;return;}
+  const now=ctx.currentTime,[pos,t0]=schedBase(),stepS=60/bpm*sr*getV('fx','anArpRate'),rel=pos-offSec*sr,b=rel/stepS;
+  if(hNext===null||hNext<=Math.floor(b)-1||hNext>Math.floor(b)+6)hNext=Math.floor(b)+1;
+  const pat=getV('fx','anArp'),span=+getV('fx','anArpOct')||2,fl=getV('fx','anFollow');
+  for(let guard=0;guard<8;guard++){
+    const Tq=t0+(hNext*stepS-rel)/(rateR*sr);if(Tq-now>.12)break;
+    if(Tq<now-.01){hNext++;continue;}
+    const sec=(hNext*stepS)/sr+offSec,H=harmonyAt(sec,fl==='bar'?'bar':fl==='beat'?'half':'beat'),sh=keyShift()+(+getV('fx','anPitch')||0);
+    const base=69+(+getV('fx','anOct')||0),notes=[];
+    for(let o=0;o<span;o++)for(const pc of (H.tones.length>=3?H.tones.slice(0,3):H.tones)){notes.push(base+o*12+(((pc+sh)%12+12)%12-base%12+12)%12);}
+    notes.sort((a,b)=>a-b);const L=notes.length,k=hNext;let i;
+    if(pat==='down')i=L-1-((k%L)+L)%L;else if(pat==='ud'){const c=Math.max(1,2*L-2),p=((k%c)+c)%c;i=p<L?p:c-p;}else if(pat==='rnd')i=Math.floor(hash1(k*13+7)*L);else i=((k%L)+L)%L;
+    const m=notes[i],acc=(k%4===0)?1:.75;pluck(m,Math.max(now,Tq),Math.min(2.5,amt)*acc);
+    if(UI.angelCan&&an.notes&&an.notes.length){const j=an.notes.reduce((bj,n,jj)=>Math.abs((n%12)-(m%12))<Math.abs((an.notes[bj]%12)-(m%12))?jj:bj,0);angelSpk.push({x:(j+.5)/an.notes.length,y:.8,v:.6,life:.8,c:j});}
+    hNext++;
+  }
+}
 function angelTick(){
   if(!an.mix)return;
   const F=fx.angelM,now=ctx.currentTime,here=onPage('angelM'),touching=F.touches.size>0||F.all||F.latch;
-  const live=here&&touching&&!getV('fx','anVis');
-  an.vca.gain.setTargetAtTime(live?getV('fx','anLevel')/100*.55:0,now,live?.12:.9);
+  const modLive=here&&touching&&!getV('fx','anVis'),padV=eff.voices||0,padH=eff.harp||0;
+  const live=modLive||padV>0,vAmt=modLive?1:padV,VT=VTYPES[getV('fx','anType')]||VTYPES.choir;
+  an.padDriven=!modLive&&padV>0;
+  an.vca.gain.setTargetAtTime(live?getV('fx','anLevel')/100*.6*VT.lv*vAmt:0,now,live?.12:.9);
+  an.trk.gain.setTargetAtTime(live?1-getV('fx','anDuck')/100*.75*vAmt:1,now,live?.15:.6); // duck the song under the voices
+  const hAmt=Math.max(modLive?getV('fx','anHarp')/100:0,padH*Math.max(.6,getV('fx','anHarp')/100)); // harp: with the voices, or alone from a pad axis
+  harpTick(hAmt);
   if(!live){an.holdIdx=null;if(an.voices.length&&now-(an.offAt||(an.offAt=now))>6){angelBuild(0,0);an.shape='';}return;}
   an.offAt=0;
   // reverb flavour + amount, vibrato
@@ -1603,19 +1653,23 @@ function angelTick(){
   const sp=getV('fx','anSpace')/100;an.wet.gain.setTargetAtTime(sp*1.4,now,.1);an.dry.gain.setTargetAtTime(1-sp*.55,now,.1);
   an.lfoG.gain.setTargetAtTime(getV('fx','anVib')/100*28,now,.1);
   // vowel: blend between the five vowel shapes
+  const oc=+getV('fx','anOct')||0,fsc=oc<=-24?.9:oc<=-12?1:1.18; // baritone / bass use male vowel shapes
   const vx=Math.max(0,Math.min(.999,F.vowel))*4,vi=Math.floor(vx),vf=vx-vi,A=VOWELS[vi],B=VOWELS[Math.min(4,vi+1)],gains=[2.4,1.5,.8];
-  an.f.forEach((o,k)=>{o.f.frequency.setTargetAtTime(A[k]+(B[k]-A[k])*vf,now,.06);o.g.gain.setTargetAtTime(gains[k],now,.06);});
+  an.f.forEach((o,k)=>{o.f.frequency.setTargetAtTime((A[k]+(B[k]-A[k])*vf)*fsc,now,.06);o.g.gain.setTargetAtTime(gains[k]*VT.fm,now,.06);o.f.Q.setTargetAtTime(VT.q,now,.1);});
+  an.raw.gain.setTargetAtTime(VT.raw*.35,now,.08);an.brG.gain.setTargetAtTime(VT.br*.25,now,.08);
+  if(getV('fx','anType')==='robot')an.lfoG.gain.setTargetAtTime(0,now,.05);
+  const tw=VT.w;if(an.wave!==tw){an.wave=tw;an.voices.forEach(v=>setVoiceWave(v.o,tw));}
   // which chord: re-voice on every bar or beat (and whenever settings change)
   const fol=getV('fx','anFollow'),unit=60/(bpm||120)*(fol==='bar'?4:fol==='fast'?1:2),gl=Math.max(.003,getV('fx','anGlide')/1000/3);
   // where the song is right now (the audio engine's own clock, not the delayed "heard" position)
   let rel,t0;if(lenS&&bpm){const [p,tc]=playing?schedBase():[posS,now];rel=p/sr-offSec;t0=tc;}else{rel=0;t0=now;}
   const idxNow=fol==='hold'?(an.holdIdx??(an.holdIdx=Math.floor(rel/unit))):Math.floor(rel/unit);
   const per=+getV('fx','anVoices')|0||1,cfgKey=getV('fx','anHarm')+'|'+getV('fx','anOct')+'|'+getV('fx','anPitch')+'|'+getV('fx','acPat')+'|'+getV('fx','acKey')+'|'+fol;
-  const voicingFor=i=>angelVoicing(offSec+i*unit+Math.min(.05,unit*.1),an.notes);
+  const voicingFor=(i,fresh)=>angelVoicing(offSec+i*unit+Math.min(.05,unit*.1),fresh?null:an.notes);
   const apply=(nt,T)=>an.voices.forEach(v=>{const f=440*Math.pow(2,(nt[v.j]-69)/12);v.o.frequency.cancelScheduledValues(T);v.o.frequency.setTargetAtTime(f,T,gl);});
   if(an.skip===idxNow){an.cur=idxNow;an.skip=null;}            // next chord was the same: nothing to do
   if(cfgKey!==an.cfg||an.cur!==idxNow&&!(an.pend&&an.pend.idx===idxNow)||!an.notes){ // catch up now (start, seek, settings change)
-    an.cfg=cfgKey;an.cur=idxNow;an.pend=null;an.notes=voicingFor(idxNow);
+    const fresh=cfgKey!==an.cfg;an.cfg=cfgKey;an.cur=idxNow;an.pend=null;an.notes=voicingFor(idxNow,fresh); // settings changed: start a fresh voicing (e.g. new octave)
     if(an.shape!==an.notes.length+'x'+per){angelBuild(an.notes.length,per);an.spr=-1;}apply(an.notes,now);}
   if(an.shape!==an.notes.length+'x'+per){angelBuild(an.notes.length,per);an.spr=-1;apply(an.notes,now);}
   if(an.pend&&now>=an.pend.T-.002){an.notes=an.pend.notes;an.cur=an.pend.idx;an.pend=null;}  // the scheduled switch has happened
@@ -1627,7 +1681,7 @@ function angelTick(){
     an.voices.forEach(v=>{v.o.detune.setTargetAtTime(v.dn*(4+spr*64)+v.jit,now,.06);v.p.pan.setTargetAtTime(Math.max(-1,Math.min(1,v.dn*spr*1.9)),now,.06);});
     an.air.frequency.setTargetAtTime(1600+spr*3800,now,.08);an.airG.gain.setTargetAtTime(.1+spr*.25,now,.08);}
   // which parts sing: the touched columns, or all of them (halo bar / lock)
-  an.parts.forEach((p,j)=>{const on=F.all||F.latch||[...F.touches.values()].some(t=>t.part===j);if(on!==p.on){p.on=on;p.g.gain.cancelScheduledValues(now);p.g.gain.setTargetAtTime(on?1:0,now,on?.18:.7);}});
+  an.parts.forEach((p,j)=>{const on=an.padDriven||F.all||F.latch||[...F.touches.values()].some(t=>t.part===j);if(on!==p.on){p.on=on;p.g.gain.cancelScheduledValues(now);p.g.gain.setTargetAtTime(on?1:0,now,on?.18:.7);}});
 }
 // ---- aqua: little rising "bloop" bubbles ----
 function bubble(a,midi,T){ // a bubble that rises in pitch and lands on a note
@@ -1932,7 +1986,7 @@ function drawHeaven(g,W,H,d,k){ // warm bloom, god rays and drifting sparkles ov
   g.restore();
 }
 function drawScene(g,W,H,d,a,key){
-  const aqa=a.aqua||0,aca=a.acid||0,ana=a.angel||0;if(ana>0)drawHeaven(g,W,H,d,ana);if(aqa<=0&&aca<=0){if(scn[key]){scn[key].bub.length=0;scn[key].tb.length=0;}return;}
+  const aqa=a.aqua||0,aca=a.acid||0,ana=Math.max(a.angel||0,a.voices||0,(a.harp||0)*.6);if(ana>0)drawHeaven(g,W,H,d,ana);if(aqa<=0&&aca<=0){if(scn[key]){scn[key].bub.length=0;scn[key].tb.length=0;}return;}
   const S=scn[key]||(scn[key]={bub:[],tb:[],pops:[],at:performance.now()}),now=performance.now(),dt=Math.min(.1,(now-S.at)/1000),t=now/1000;S.at=now;
   const M=Math.min(W,H),px=Math.max(2,Math.round(M/120)),lw=Math.ceil(W/px),lh=Math.ceil(H/px),lm=Math.min(lw,lh);
   let L=S.low;if(!L||L.width!==lw||L.height!==lh){L=S.low=document.createElement('canvas');L.width=lw;L.height=lh;}
@@ -2462,7 +2516,7 @@ const MENUS={
   stut:[{k:'slide',l:'Slide',opts:[['Pitch','p'],['Filter','f'],['Both','b']]},{k:'range',l:'Range',opts:[3,5,7,12,24].map(v=>['±'+v,v])}],
   tape:[{k:'len',l:'Length',opts:[['½ beat',.5],['1 beat',1],['2 beats',2],['4 beats',4]]},{k:'spin',l:'Spin',opts:[['On',true],['Off',false]]}],
   viewer:[{k:'vfx',l:'Effects',opts:[['Both pads','both'],['Pad A only','xy'],['Pad B only','xy2'],['None (clean)','none']]},{k:'vfit',l:'View',opts:[['Fit whole frame','contain'],['Fill window','cover']]},{k:'vcrt',l:'Screen',opts:[['Clean','off'],['Old TV (subtle)','soft'],['Old TV (strong)','hard']]},{k:'vrot',l:'Rotate',opts:[['0°',0],['90° ↻',90],['180°',180],['270° ↻',270]]},{k:'vscope',l:'Scope',opts:[['Off','none'],['Pad A','xy'],['Pad B','xy2'],['Both pads','both']]},{k:'vgrid',l:'Grid',opts:[['On','on'],['Off','off']]}],
-  angelM:[{k:'anHarm',l:'Harmony',opts:[['Unison','u'],['Fifths','f'],['Triad','t'],['Seventh','s'],['Cluster','c'],['Melody + choir','m']]},{k:'anRev',l:'Reverb',opts:[['Chamber','chamber'],['Hall','hall'],['Cathedral','cath'],['Heaven','heaven'],['Shimmer','shimmer']]},{k:'anFollow',l:'Chords',opts:[['Every beat','fast'],['Half bar','beat'],['Every bar','bar'],['Hold','hold']]}],
+  angelM:[{k:'anHarm',l:'Harmony',opts:[['Unison','u'],['Fifths','f'],['Triad','t'],['Seventh','s'],['Cluster','c'],['Melody + choir','m']]},{k:'anRev',l:'Reverb',opts:[['Chamber','chamber'],['Hall','hall'],['Cathedral','cath'],['Heaven','heaven'],['Shimmer','shimmer']]},{k:'anType',l:'Voice',opts:[['Choir','choir'],['Glass','glass'],['Warm pad','pad'],['Organ','organ'],['Robot','robot'],['Breathy','breath']]},{k:'anFollow',l:'Chords',opts:[['Every beat','fast'],['Half bar','beat'],['Every bar','bar'],['Hold','hold']]}],
   aquaM:[{k:'aqNotes',l:'Notes',opts:[['Chords','c'],['Melody','m'],['Harmony','h']]},{k:'aqOct',l:'Range',opts:[['Low',-12],['Mid',0],['High',12]]}],
   acidM:[{k:'acPat',l:'Scale',opts:[['Song','song'],['Minor pent.','pent'],['Phrygian','phry'],['Blues','blues'],['Dorian','dorian'],['Root + 5th','octave']]},{k:'acWave',l:'Wave',opts:[['Saw','sawtooth'],['Square','square']]},{k:'acRate',l:'Steps',opts:[['1/8',.5],['1/16',.25],['1/32',.125]]}],
   pitch:[{k:'mode',l:'Mode',opts:[['Speed','s'],['Keep tempo','k'],['Keep pitch','t']]},{k:'glide',l:'Glide',opts:[0,60,120,250,500,800].map(v=>[v+'ms',v])}]
