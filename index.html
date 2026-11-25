@@ -201,6 +201,12 @@ body.min #viewer{opacity:0;pointer-events:none}
 .vcol i{display:inline-block;width:14px;height:11px;border:1px solid #000;box-shadow:inset 1px 1px #fff}
 .vcol input{position:absolute;opacity:0;width:1px;height:1px;left:0;bottom:0;pointer-events:none}
 .vsep{width:8px}
+#chaos{display:none;position:fixed;z-index:80;width:360px;max-width:96vw;background:var(--face);box-shadow:var(--win);padding:3px 4px 5px}
+#chaos .tbar{cursor:move;touch-action:none}#chaos .tbtns i{cursor:pointer}
+#chCan{display:block;width:100%;height:300px;background:#000;box-shadow:var(--sunken);touch-action:none;cursor:grab;margin-top:3px}
+#chInfo{font-size:11px;min-height:30px;padding:4px 2px;line-height:1.35}
+.chbtns{display:flex;gap:4px;align-items:center}.chbtns span{flex:1;font-size:10px;color:#444}
+.chbtns button{font:inherit;font-size:12px;height:24px;padding:0 10px;border:0;background:var(--face);box-shadow:var(--raised);cursor:pointer}.chbtns button:active{box-shadow:var(--sunken)}
 .vrain{display:inline-flex;align-items:center}.vrain i{display:inline-block;width:14px;height:11px;margin-right:4px;border:1px solid #000;background:linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f)}
 .vrain.on{box-shadow:var(--sunken)!important;background:var(--dither)!important}
 .vlk i{display:inline-block;width:9px;height:9px;margin-right:4px;border:1px solid #000;vertical-align:-1px}
@@ -321,6 +327,9 @@ body.editing #edbar{display:flex}
   </div>
 </div>
 
+<div id="chaos"><div class="tbar"><span class="ticon"></span><span id="chTitle">Chaos toy</span><span style="flex:1"></span><span class="tbtns"><i id="chClose" role="button" aria-label="Close">✕</i></span></div>
+  <canvas id="chCan"></canvas><div id="chInfo"></div>
+  <div class="chbtns"><span>drag to spin · fling for chaos · double-click to scramble</span><button id="chScr">Scramble</button><button id="chReset">Reset</button></div></div>
 <div id="viewer">
   <div class="tbar"><span class="ticon"><svg viewBox="0 0 16 16"><rect x="1.5" y="3" width="13" height="10" fill="#000" stroke="#fff" stroke-width="1"/><path d="M6.5 5.5v5l4-2.5z" fill="#33ff66"/></svg></span><span id="vTitle">Video viewer</span><span style="flex:1"></span><span class="tbtns"><i role="button" aria-label="Minimize">_</i><i role="button" aria-label="Maximize">□</i><i role="button" aria-label="Close">×</i></span></div>
   <div class="mbar" data-id="viewer"><button class="mi" data-j="0"></button><button class="mi" data-j="1"></button><button class="mi" data-j="2"></button><button class="mi" data-j="3"></button><button class="mi" data-j="4"></button><button class="mi" data-j="5"></button><span style="flex:1"></span><button class="mi vrain" title="Psychedelic: cycle the scope, grid and markers through rainbow colours"><i></i>Rainbow</button><span class="vsep"></span><button class="mi vlk" data-p="xy" title="Lock Pad A so touching the viewer doesn't move it"></button><button class="mi vlatch" data-p="xy" title="Pin Pad A's effects on"></button><label class="mi vcol" data-p="xy" title="Pad A scope colour in the viewer"><i></i><input type="color"></label><span class="vsep"></span><button class="mi vlk" data-p="xy2" title="Lock Pad B so touching the viewer doesn't move it"></button><button class="mi vlatch" data-p="xy2" title="Pin Pad B's effects on"></button><label class="mi vcol" data-p="xy2" title="Pad B scope colour in the viewer"><i></i><input type="color"></label></div>
@@ -626,6 +635,7 @@ registerProcessor('remixer',Remixer);
 <script>
 (()=>{
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const CUBE='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 2.5 21 7v10l-9 4.5L3 17V7z"/><path d="M3 7l9 4.5L21 7M12 11.5v10"/></svg>';
 const EYE='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M1.5 12S5.5 5 12 5s10.5 7 10.5 7-4 7-10.5 7S1.5 12 1.5 12z"/><circle cx="12" cy="12" r="3.4" fill="currentColor"/></svg>';
 const LOCK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
 $$('.latch[data-fx]').forEach(b=>b.innerHTML=LOCK);
@@ -2392,6 +2402,138 @@ function drawAquaMod(){
   if(F.on){const x=F.gx*W,y=F.gy*H,t=performance.now()/1000;g.strokeStyle='rgba(200,255,255,.7)';g.lineWidth=1.5*d;
     for(let k=0;k<3;k++){const r=((t*1.2+k/3)%1)*30*d+6*d;g.globalAlpha=1-((t*1.2+k/3)%1);g.beginPath();g.ellipse(x,y,r,r*.5,0,0,6.283);g.stroke();}g.globalAlpha=1;}
 }
+/* ---------- CHAOS TOY: spin a 3D object, every setting of the module gets mixed ---------- */
+const chaosOK=id=>!!(SPEC[id]||id==='xy'||id==='xy2')&&id!=='rev';
+function chaosRows(id){
+  let rows,ns=id;
+  if(id==='xy'||id==='xy2'){ns='fx';rows=[...new Set([getV(id,'ax'),getV(id,'ay')].filter(Boolean).map(e=>FXGROUP[e]||e))].flatMap(e=>FXSPEC[e]||[]);}
+  else rows=SPEC[id]||[];
+  return {ns,rows:rows.filter(r=>r.k&&!/Vis$/.test(r.k)&&!['acKey','anPitch','aqKey'].includes(r.k)&&(r.min!=null||r.chips||r.toggle))};
+}
+// tiny 3D meshes
+const MESH={
+  ico(){const t=(1+Math.sqrt(5))/2,v=[[-1,t,0],[1,t,0],[-1,-t,0],[1,-t,0],[0,-1,t],[0,1,t],[0,-1,-t],[0,1,-t],[t,0,-1],[t,0,1],[-t,0,-1],[-t,0,1]].map(p=>{const l=Math.hypot(...p);return p.map(x=>x/l);});
+    return {v,f:[[0,11,5],[0,5,1],[0,1,7],[0,7,10],[0,10,11],[1,5,9],[5,11,4],[11,10,2],[10,7,6],[7,1,8],[3,9,4],[3,4,2],[3,2,6],[3,6,8],[3,8,9],[4,9,5],[2,4,11],[6,2,10],[8,6,7],[9,8,1]]};},
+  cube(){const v=[];for(const x of[-1,1])for(const y of[-1,1])for(const z of[-1,1])v.push([x*.75,y*.75,z*.75]);return {v,f:[[0,1,3,2],[4,6,7,5],[0,4,5,1],[2,3,7,6],[0,2,6,4],[1,5,7,3]]};},
+  octa(){return {v:[[1,0,0],[-1,0,0],[0,1.15,0],[0,-1.15,0],[0,0,1],[0,0,-1]],f:[[2,4,0],[2,1,4],[2,5,1],[2,0,5],[3,0,4],[3,4,1],[3,1,5],[3,5,0]]};},
+  sphere(n=12){const v=[],f=[];for(let i=0;i<=n;i++){const a=Math.PI*i/n;for(let j=0;j<2*n;j++){const b=Math.PI*j/n;v.push([Math.sin(a)*Math.cos(b),Math.cos(a),Math.sin(a)*Math.sin(b)]);}}
+    for(let i=0;i<n;i++)for(let j=0;j<2*n;j++){const a=i*2*n+j,b=i*2*n+(j+1)%(2*n);f.push([a,b,b+2*n,a+2*n]);}return {v,f};},
+  torus(R=.75,r=.28,n=24,m=10){const v=[],f=[];for(let i=0;i<n;i++){const a=2*Math.PI*i/n;for(let j=0;j<m;j++){const b=2*Math.PI*j/m;v.push([(R+r*Math.cos(b))*Math.cos(a),r*Math.sin(b),(R+r*Math.cos(b))*Math.sin(a)]);}}
+    for(let i=0;i<n;i++)for(let j=0;j<m;j++){const a=i*m+j,b=((i+1)%n)*m+j,c=((i+1)%n)*m+(j+1)%m,d=i*m+(j+1)%m;f.push([a,d,c,b]);}return {v,f};},
+  reel(n=18){const v=[],f=[];for(const y of[-.32,.32])for(let i=0;i<n;i++){const a=2*Math.PI*i/n;v.push([Math.cos(a)*.95,y,Math.sin(a)*.95]);}
+    for(let i=0;i<n;i++){const j=(i+1)%n;f.push([i,j,n+j,n+i]);}f.push([...Array(n).keys()].reverse());f.push([...Array(n).keys()].map(i=>n+i));
+    for(let k=0;k<3;k++){const a=2*Math.PI*k/3,c=v.length;for(const y of[-.33,.33])for(const da of[-.12,.12])v.push([Math.cos(a+da)*.85,y,Math.sin(a+da)*.85]);} // spokes marks
+    return {v,f,spokes:true};}
+};
+// how each module's toy looks
+const CHAOS_STYLE={
+  xy:{mesh:'ico',fx:'crt'},xy2:{mesh:'ico',fx:'crt'},stut:{mesh:'cube',fx:'glitch',col:'#ff40ff'},tape:{mesh:'reel',fx:'reel',col:'#ff3838'},
+  pd:{mesh:'sphere',fx:'pulse',col:'#30e040'},pitch:{mesh:'octa',fx:'rainbow'},aquaM:{mesh:'sphere',fx:'liquid',col:'#00e0c0'},
+  acidM:{mesh:'sphere',fx:'goo',col:'#9cff2a'},angelM:{mesh:'torus',fx:'halo',col:'#ffd860'}
+};
+const CH={open:false};
+function openChaos(id){
+  const R=chaosRows(id),st=CHAOS_STYLE[id]||{mesh:'ico',fx:'crt'},M=MODS[id];
+  Object.assign(CH,{open:true,id,ns:R.ns,rows:R.rows,st,mesh:MESH[st.mesh](),yaw:.6,pitch:.35,vy:.004,vp:0,energy:0,drag:null,applied:0,lastSig:'',changed:[],spk:[],
+    snap:R.rows.map(r=>getV(R.ns,r.k)),seed:[...id].reduce((a,c)=>a+c.charCodeAt(0),0),col:st.col||getV(id,'cFg')||M.c});
+  $('#chTitle').textContent='Chaos toy — '+M.name;$('#chaos .ticon').innerHTML=CUBE;
+  const w=$('#chaos');w.style.display='block';
+  const card=UI.cards[id],r=card?card.getBoundingClientRect():null,W=w.offsetWidth,H=w.offsetHeight;
+  w.style.left=Math.max(4,Math.min(innerWidth-W-4,r?r.right+8:innerWidth/2-W/2))+'px';w.style.top=Math.max(4,Math.min(innerHeight-H-4,r?r.top:80))+'px';
+  if(r&&r.right+8+W>innerWidth)w.style.left=Math.max(4,r.left-W-8)+'px';
+  chaosInfo();requestAnimationFrame(chaosFrame);
+}
+function closeChaos(){CH.open=false;$('#chaos').style.display='none';}
+// the mix: three motion axes (spin angle, tilt, how hard it's spinning) blended into every setting with its own fixed weights
+function chaosValue(r,i){
+  const h=k=>hash1(CH.seed*97+i*31+k*7),w1=(1+Math.floor(h(1)*3))*(h(2)<.5?-1:1),w2=(h(3)-.5)*3,w3=(h(4)-.5)*2.4,ph=h(5);
+  const A2=(CH.pitch+1.4)/2.8,t=.5+.5*Math.sin(w1*CH.yaw+2*Math.PI*(w2*A2+w3*CH.energy+ph));
+  if(r.toggle)return t>.5;
+  if(r.chips){const o=r.chips;return o[Math.min(o.length-1,Math.floor(t*o.length))][1];}
+  const v=r.min+t*(r.max-r.min);return Number.isInteger(r.min)&&Number.isInteger(r.max)&&r.max-r.min>=4?Math.round(v):Math.round(v*100)/100;
+}
+function chaosApply(vals){ // write many settings at once, then apply once
+  const nsR=(CH.ns==='aquaM'||CH.ns==='acidM'||CH.ns==='angelM')?'fx':CH.ns;let any=false;const ch=[];
+  CH.rows.forEach((r,i)=>{const v=vals[i];if(getV(nsR,r.k)!==v){(cfg[nsR]=cfg[nsR]||{})[r.k]=v;any=true;ch.push(i);}});
+  if(any){store.set('remixer.cfg',cfg);applyCfg(nsR);refreshMenus();if(nsR==='fx')pushFX();CH.changed=ch.concat(CH.changed.filter(i=>!ch.includes(i))).slice(0,4);chaosInfo();}
+}
+function chaosInfo(){
+  const show=(CH.changed.length?CH.changed:CH.rows.map((_,i)=>i).slice(0,4)).slice(0,4).map(i=>{const r=CH.rows[i],v=getV(CH.ns,r.k);
+    const txt=r.toggle?(v?'on':'off'):r.chips?((r.chips.find(c=>c[1]===v)||[v])[0]):(r.f?r.f(v):v);return `<b>${r.l}</b> ${txt}`;});
+  $('#chInfo').innerHTML=CH.rows.length?show.join(' · '):'This module has no settings to mix.';
+}
+function chaosFrame(){
+  if(!CH.open)return;
+  const c=$('#chCan');fitCanvas(c);const W=c.width,H=c.height,g=c.getContext('2d'),d=devicePixelRatio||1,t=performance.now()/1000,st=CH.st;
+  if(!CH.drag){CH.yaw+=CH.vy;CH.pitch=Math.max(-1.4,Math.min(1.4,CH.pitch+CH.vp));CH.vy*=.975;CH.vp*=.9;if(Math.abs(CH.vy)<.002)CH.vy=.002*Math.sign(CH.vy||1);}
+  CH.energy+=(Math.min(1,Math.abs(CH.vy)*9+Math.abs(CH.vp)*9)-CH.energy)*.08;
+  // apply the mix (throttled, only when it moved)
+  const sig=CH.yaw.toFixed(2)+'|'+CH.pitch.toFixed(2)+'|'+CH.energy.toFixed(2);
+  if(sig!==CH.lastSig&&t-CH.applied>.09&&CH.rows.length&&(CH.drag||Math.abs(CH.vy)>.0025||CH.energy>.02)){CH.lastSig=sig;CH.applied=t;chaosApply(CH.rows.map((r,i)=>chaosValue(r,i)));}
+  // background
+  const bgs={liquid:['#022a40','#000a14'],goo:['#0a2400','#020800'],halo:['#2a1f50','#05030f'],crt:['#001808','#000']};
+  const bg=g.createLinearGradient(0,0,0,H),bc=bgs[st.fx]||['#141428','#000'];bg.addColorStop(0,bc[0]);bg.addColorStop(1,bc[1]);g.fillStyle=bg;g.fillRect(0,0,W,H);
+  g.strokeStyle='rgba(255,255,255,.06)';g.lineWidth=1;for(let i=-8;i<=8;i++){const y=H*.82;g.beginPath();g.moveTo(W/2+i*W*.06,y);g.lineTo(W/2+i*W*.25,H);g.stroke();} // floor
+  // beat (for pulse)
+  let env=0;if(lenS&&bpm){const b=(heardPos()/sr-offSec)/(60/bpm);env=Math.exp(-(b-Math.floor(b))*5);}
+  const E=CH.energy,M=CH.mesh,cy=Math.cos(CH.yaw),sy=Math.sin(CH.yaw),cp=Math.cos(CH.pitch),sp=Math.sin(CH.pitch);
+  const P=M.v.map((p,i)=>{let [x,y,z]=p;
+    if(st.fx==='liquid'){const k=1+(.1+.25*E)*Math.sin(3*x+t*2.1)*Math.sin(3*y+t*1.7)*Math.cos(2.5*z+t*1.3);x*=k;y*=k;z*=k;}
+    if(st.fx==='goo'){const sag=Math.max(0,-y);y-=sag*sag*(.25+.3*E);const h=hash1(i);if(y<-.55&&h<.25)y-=.35*Math.pow(Math.sin(t*(1+h)+h*9)*.5+.5,2)*(1+E);x*=1+.06*Math.sin(t*3+i);z*=1+.06*Math.cos(t*2.6+i);}
+    if(st.fx==='pulse'){const k=1+.22*env+.1*E;x*=k;y*=k;z*=k;}
+    if(st.fx==='halo')y+=Math.sin(t*1.6)*.06;
+    const sc=st.fx==='reel'?1:1;let X=x*cy-z*sy,Z=x*sy+z*cy;let Y=y*cp-Z*sp;Z=y*sp+Z*cp;Z+=3.3;
+    if(st.fx==='reel'){} // spins with the yaw
+    const fz=Math.min(W,H)*1.05;return [W/2+X*sc/Z*fz,H*.46-Y*sc/Z*fz,Z,X,Y];});
+  const L=[-.4,.7,-.6],ll=Math.hypot(...L);
+  const faces=M.f.map((f,fi)=>{const a=P[f[0]],b=P[f[1]],cc=P[f[2]];
+    const ux=b[3]-a[3],uy=b[4]-a[4],uz=b[2]-a[2],vx=cc[3]-a[3],vy=cc[4]-a[4],vz=cc[2]-a[2];
+    let nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx;const nl=Math.hypot(nx,ny,nz)||1;nx/=nl;ny/=nl;nz/=nl;
+    const cx0=f.reduce((s,i)=>s+P[i][3],0)/f.length,cy0=f.reduce((s,i)=>s+P[i][4],0)/f.length,cz0=f.reduce((s,i)=>s+P[i][2],0)/f.length;
+    if(nx*cx0+ny*cy0+nz*cz0>0){nx=-nx;ny=-ny;nz=-nz;} // normal always points at the camera side: closed solids, consistent light
+    const facing=-(nx*cx0+ny*cy0+nz*cz0)/Math.hypot(cx0,cy0,cz0);
+    return {f,fi,z:cz0,lit:Math.max(0,(nx*L[0]+ny*L[1]+nz*L[2])/ll),front:facing>.02};});
+  faces.sort((a,b)=>b.z-a.z);
+  const rgb=rgbOf(CH.col).split(',').map(Number);
+  for(const F of faces){
+    // painter's order (far to near) keeps convex objects solid; back faces are only drawn see-through for the liquid
+    let col;const sh=.22+.78*F.lit;
+    if(st.fx==='rainbow')col=`hsl(${(F.fi*45+CH.yaw*57+t*40)%360},95%,${30+F.lit*45}%)`;
+    else if(st.fx==='reel'&&F.f.length===4){const stripe=F.fi%2;col=`rgb(${Math.round(rgb[0]*sh*(stripe?1:.6))},${Math.round(rgb[1]*sh)},${Math.round(rgb[2]*sh)})`;}
+    else col=`rgba(${Math.round(rgb[0]*sh)},${Math.round(rgb[1]*sh)},${Math.round(rgb[2]*sh)},${st.fx==='liquid'?(F.front?.85:.25):1})`;
+    g.beginPath();F.f.forEach((i,k)=>k?g.lineTo(P[i][0],P[i][1]):g.moveTo(P[i][0],P[i][1]));g.closePath();g.fillStyle=col;g.fill();
+    if(st.fx==='crt'||st.fx==='rainbow'){g.strokeStyle=st.fx==='crt'?`rgba(${rgb.join(',')},.9)`:'rgba(255,255,255,.35)';g.lineWidth=1.2*d;g.stroke();}
+    if(st.fx==='liquid'&&F.front&&F.lit>.85){g.fillStyle='rgba(255,255,255,.35)';g.fill();}
+    if(st.fx==='goo'&&F.front&&F.lit>.9){g.fillStyle='rgba(230,255,190,.5)';g.fill();}
+  }
+  // after-effects
+  if(st.fx==='glitch'){const n=2+Math.floor(E*8);for(let i=0;i<n;i++){const y=Math.random()*H,h=(4+Math.random()*24)*d,dx=(Math.random()-.5)*(10+E*60)*d;g.drawImage(c,0,y,W,h,dx,y,W,h);}
+    g.save();g.globalCompositeOperation='lighter';g.globalAlpha=.35+.3*E;g.drawImage(c,(3+E*6)*d,0);g.globalAlpha=.25;g.drawImage(c,-(3+E*6)*d,0);g.restore();}
+  if(st.fx==='crt'){g.fillStyle='rgba(0,0,0,.35)';for(let y=0;y<H;y+=3*d)g.fillRect(0,y,W,d);}
+  if(st.fx==='halo'||st.fx==='pulse'||st.fx==='liquid'){g.save();g.globalCompositeOperation='lighter';g.globalAlpha=st.fx==='halo'?.6:.3;g.filter=`blur(${Math.round(10*d)}px)`;g.drawImage(c,0,0);g.restore();}
+  if(st.fx==='halo'){if(Math.random()<.4+E)CH.spk.push({x:W*(.3+Math.random()*.4),y:H*.55,v:(1+Math.random()*2)*d,l:1});
+    g.fillStyle='#fff6c8';for(const p of CH.spk){p.y-=p.v;p.l-=.015;g.globalAlpha=Math.max(0,p.l);g.fillRect(p.x-d,p.y-3*d,2*d,6*d);g.fillRect(p.x-3*d,p.y-d,6*d,2*d);}g.globalAlpha=1;CH.spk=CH.spk.filter(p=>p.l>0);}
+  if(st.fx==='reel'){g.strokeStyle='rgba(255,255,255,.08)';g.lineWidth=2*d;g.beginPath();g.arc(W/2,H*.46,W*.33,0,6.283);g.stroke();}
+  // chaos meter
+  g.fillStyle='rgba(255,255,255,.12)';g.fillRect(8*d,H-14*d,W-16*d,6*d);g.fillStyle=`hsl(${(1-E)*120},90%,55%)`;g.fillRect(8*d,H-14*d,(W-16*d)*E,6*d);
+  g.font=`700 ${Math.round(10*d)}px ${canvasFont}`;g.fillStyle='rgba(255,255,255,.7)';g.fillText('CHAOS',8*d,H-18*d);
+  requestAnimationFrame(chaosFrame);
+}
+{ // chaos toy: dragging, flinging, window moving
+  const c=$('#chCan');let lx=0,ly=0,lt=0;
+  c.addEventListener('pointerdown',e=>{e.preventDefault();c.setPointerCapture(e.pointerId);CH.drag=e.pointerId;lx=e.clientX;ly=e.clientY;lt=performance.now();c.style.cursor='grabbing';});
+  c.addEventListener('pointermove',e=>{if(CH.drag!==e.pointerId)return;const now=performance.now(),dt=Math.max(8,now-lt),dx=e.clientX-lx,dy=e.clientY-ly;lx=e.clientX;ly=e.clientY;lt=now;
+    CH.yaw+=dx*.012;CH.pitch=Math.max(-1.4,Math.min(1.4,CH.pitch+dy*.01));CH.vy=CH.vy*.5+dx*.012*16/dt*.5;CH.vp=CH.vp*.5+dy*.01*16/dt*.5;});
+  const up=e=>{if(CH.drag===e.pointerId){CH.drag=null;c.style.cursor='';}};c.addEventListener('pointerup',up);c.addEventListener('pointercancel',up);
+  c.addEventListener('dblclick',()=>{CH.yaw+=Math.random()*8;CH.pitch=(Math.random()-.5)*2.4;CH.vy=(Math.random()<.5?-1:1)*(.15+Math.random()*.2);});
+  $('#chScr').addEventListener('click',()=>{CH.yaw+=2+Math.random()*8;CH.pitch=(Math.random()-.5)*2.4;CH.vy=(Math.random()<.5?-1:1)*(.15+Math.random()*.25);});
+  $('#chReset').addEventListener('click',()=>{CH.vy=.002;CH.vp=0;CH.energy=0;chaosApply(CH.snap);CH.changed=[];chaosInfo();});
+  $('#chClose').addEventListener('click',closeChaos);
+  const w=$('#chaos'),tb=w.querySelector('.tbar');let ox=0,oy=0,mv=null;
+  tb.addEventListener('pointerdown',e=>{if(e.target.id==='chClose')return;mv=e.pointerId;tb.setPointerCapture(mv);ox=e.clientX-w.offsetLeft;oy=e.clientY-w.offsetTop;});
+  tb.addEventListener('pointermove',e=>{if(mv!==e.pointerId)return;w.style.left=Math.max(0,Math.min(innerWidth-60,e.clientX-ox))+'px';w.style.top=Math.max(0,Math.min(innerHeight-30,e.clientY-oy))+'px';});
+  tb.addEventListener('pointerup',()=>{mv=null;});
+}
 /* ---------- ANGEL VOICES module: a harp of light ---------- */
 const angelSpk=[];
 function drawAngelMod(){
@@ -2566,11 +2708,12 @@ function buildLayout(){
     const s=document.createElement('div');s.className='slot';
     s.style.gridColumn='span '+e.w;s.style.gridRow='span '+e.h;
     const c=document.createElement('div');c.className='card';c.style.setProperty('--c',M.c);
-    c.innerHTML=`<div class="ch"><b>${M.name}</b>${M.vis?`<button class="latch visbtn" data-k="${M.vis}" aria-label="Visuals only" title="Visuals only: the picture reacts, the sound stays untouched">${EYE}</button>`:''}${(SPEC[id]||PADDEF[id])?`<button class="latch cfg" aria-label="Settings">${CFGSVG}</button>`:''}${M.latch?`<button class="latch" data-fx="${M.latch}">${LOCK}</button>`:''}</div>${MENUS[id]?`<div class="mbar" data-id="${id}">${MENUS[id].map((m,j)=>`<button class="mi" data-j="${j}"></button>`).join('')}</div>`:''}<div class="mb"></div>`;
+    c.innerHTML=`<div class="ch"><b>${M.name}</b>${chaosOK(id)?`<button class="latch chaosbtn" aria-label="Chaos toy" title="Chaos toy: spin the object to scramble this module's settings">${CUBE}</button>`:''}${M.vis?`<button class="latch visbtn" data-k="${M.vis}" aria-label="Visuals only" title="Visuals only: the picture reacts, the sound stays untouched">${EYE}</button>`:''}${(SPEC[id]||PADDEF[id])?`<button class="latch cfg" aria-label="Settings">${CFGSVG}</button>`:''}${M.latch?`<button class="latch" data-fx="${M.latch}">${LOCK}</button>`:''}</div>${MENUS[id]?`<div class="mbar" data-id="${id}">${MENUS[id].map((m,j)=>`<button class="mi" data-j="${j}"></button>`).join('')}</div>`:''}<div class="mb"></div>`;
     c.querySelectorAll('.mi').forEach(b=>b.onclick=()=>openMenu(b,id,+b.dataset.j));
     c.style.setProperty('--ic',e.ic||M.ic);
     s.appendChild(c);UI.cards[id]=c;M.build(c.querySelector('.mb'));
     const cb=c.querySelector('.cfg');if(cb)bindCfg(cb,id,i);
+    const chb=c.querySelector('.chaosbtn');if(chb){chb.addEventListener('pointerdown',e=>e.stopPropagation());chb.addEventListener('click',e=>{e.stopPropagation();openChaos(id);});}
     s.insertAdjacentHTML('beforeend',`<div class="ov"><b>${M.name}</b><small>${WN[e.w]} · ${HN[e.h]}</small></div><div class="grip" aria-label="Resize"></div>`);
     bindGrip(s.querySelector('.grip'),s,e,i);
     bindMove(c.querySelector('.ch'),s,i,false);bindMove(s.querySelector('.ov'),s,i,true);
