@@ -938,6 +938,7 @@ const wave=$('#wave');
 // trim handles + sliding selection + seek
 const TABW=14;let wHover=null;
 let trimA=0,trimB=1,loopOn=false,selOn=true,wMode=null,wX0=0,wA0=0,wB0=0,wMoved=false;
+let wHoldT=0,wLastF=0,wSeekAt=0;
 const effA=()=>selOn?trimA:0,effB=()=>selOn?trimB:1;
 function sendRegion(){if(lenS)send({t:'region',a:Math.round(effA()*lenS),b:Math.round(effB()*lenS),loop:loopOn});}
 function snapF(f){
@@ -968,8 +969,13 @@ wave.addEventListener('pointerdown',e=>{
     return;
   }
   const f=sFrac(e),hh=hitHandle(e);
-  wMode=!selOn?'seek':hh?hh:(f>trimA&&f<trimB)?'body?':'seek';
-  wX0=f;wA0=trimA;wB0=trimB;wMoved=false;if(wMode==='seek')dragX=f;
+  // a normal drag scrubs; press and hold inside a trimmed selection, then drag, to slide the whole selection
+  wMode=hh||'seek';
+  wX0=f;wLastF=f;wA0=trimA;wB0=trimB;wMoved=false;if(wMode==='seek')dragX=f;
+  clearTimeout(wHoldT);
+  if(!hh&&selOn&&(trimA>0||trimB<1)&&f>trimA&&f<trimB)wHoldT=setTimeout(()=>{
+    if(wMode==='seek'&&!wMoved){wMode='body';wX0=wLastF;wA0=trimA;wB0=trimB;dragX=null;wave.style.cursor='grabbing';try{navigator.vibrate&&navigator.vibrate(15);}catch(_){}}
+  },350);
 });
 wave.addEventListener('pointermove',e=>{
   if(!wMode){if(e.pointerType==='mouse'){wHover=hitHandle(e);wave.style.cursor=wHover?'ew-resize':'';}return;}
@@ -980,20 +986,25 @@ wave.addEventListener('pointermove',e=>{
     const sp=(pinch.e0-pinch.s0)*pinch.d0/dd,rel=(c-r.left)/r.width;
     setView(pinch.f0-rel*sp,pinch.f0-rel*sp+sp,true);return;
   }
-  const f=sFrac(e);if(Math.abs(f-wX0)/(vE-vS)*wave.clientWidth>5)wMoved=true;
+  const f=sFrac(e);wLastF=f;if(Math.abs(f-wX0)/(vE-vS)*wave.clientWidth>5){if(!wMoved&&wMode==='seek')clearTimeout(wHoldT);wMoved=true;}
   const mt=minTrim();
   if(wMode==='a'){trimA=Math.max(0,Math.min(trimB-mt,snapF(f)));sendRegion();}
   else if(wMode==='b'){trimB=Math.min(1,Math.max(trimA+mt,snapF(f)));sendRegion();}
-  else if(wMode==='body?'){if(wMoved)wMode='body';}
   if(wMode==='body'){const L=wB0-wA0;let na=snapF(wA0+(f-wX0));na=Math.max(0,Math.min(1-L,na));trimA=na;trimB=na+L;sendRegion();}
-  else if(wMode==='seek')dragX=f;
+  else if(wMode==='seek'){
+    dragX=f;
+    // scrub: follow the finger with the sound too (a few times a second)
+    const now=performance.now();
+    if(wMoved&&now-wSeekAt>70){wSeekAt=now;const p=Math.max(effA(),Math.min(effB()-.0005,f))*lenS;send({t:'seek',p});posS=p;posAt=now;}
+  }
 });
 const endDrag=e=>{
   wPtrs.delete(e.pointerId);
   if(!wMode)return;
   if(wMode==='pinch'){if(wPtrs.size===0){wMode=null;pinch=null;}return;}
   const f=sFrac(e);
-  if(wMode==='seek'||(wMode==='body?'&&!wMoved)){
+  clearTimeout(wHoldT);if(wMode==='body')wave.style.cursor='';
+  if(wMode==='seek'||(wMode==='body'&&!wMoved)){ // a long still press counts as a tap
     const p=Math.max(effA(),Math.min(effB()-.0005,f))*lenS;send({t:'seek',p});posS=p;posAt=performance.now();
   }
   wMode=null;dragX=null;
