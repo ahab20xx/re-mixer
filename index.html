@@ -180,7 +180,13 @@ radial-gradient(ellipse at center,transparent 50%,rgba(0,0,0,var(--vig,.4)) 100%
 body.min #viewer{opacity:0;pointer-events:none}
 #viewer .mbar{max-height:18px}
 #vbox{flex:1;min-height:0;position:relative;background:#000;box-shadow:var(--sunken);padding:2px;touch-action:none}
-.vlk.on{box-shadow:var(--sunken)!important;background:var(--dither)!important}
+.vlk.on,.vlatch.on{box-shadow:var(--sunken)!important;background:var(--dither)!important}
+.vlatch{padding:0 4px!important;display:inline-flex;align-items:center;color:#000!important}.vlatch svg{width:13px;height:13px;stroke:#000}
+.vlatch.on{color:#000080!important}.vlatch.on svg{stroke:#000080;stroke-width:3}
+.vcol{position:relative;padding:0 4px!important;display:inline-flex;align-items:center;cursor:pointer}
+.vcol i{display:inline-block;width:14px;height:11px;border:1px solid #000;box-shadow:inset 1px 1px #fff}
+.vcol input{position:absolute;opacity:0;width:1px;height:1px;left:0;bottom:0;pointer-events:none}
+.vsep{width:8px}
 .vlk i{display:inline-block;width:9px;height:9px;margin-right:4px;border:1px solid #000;vertical-align:-1px}
 #vcan{position:absolute;inset:2px;width:calc(100% - 4px);height:calc(100% - 4px)}
 #vMsg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#808080;font-size:13px;pointer-events:none}
@@ -301,7 +307,7 @@ body.editing #edbar{display:flex}
 
 <div id="viewer">
   <div class="tbar"><span class="ticon"><svg viewBox="0 0 16 16"><rect x="1.5" y="3" width="13" height="10" fill="#000" stroke="#fff" stroke-width="1"/><path d="M6.5 5.5v5l4-2.5z" fill="#33ff66"/></svg></span><span id="vTitle">Video viewer</span><span style="flex:1"></span><span class="tbtns"><i role="button" aria-label="Minimize">_</i><i role="button" aria-label="Maximize">□</i><i role="button" aria-label="Close">×</i></span></div>
-  <div class="mbar" data-id="viewer"><button class="mi" data-j="0"></button><button class="mi" data-j="1"></button><button class="mi" data-j="2"></button><button class="mi" data-j="3"></button><button class="mi" data-j="4"></button><button class="mi" data-j="5"></button><span style="flex:1"></span><button class="mi vlk" data-p="xy" title="Lock Pad A so touching the viewer doesn't move it"></button><button class="mi vlk" data-p="xy2" title="Lock Pad B so touching the viewer doesn't move it"></button></div>
+  <div class="mbar" data-id="viewer"><button class="mi" data-j="0"></button><button class="mi" data-j="1"></button><button class="mi" data-j="2"></button><button class="mi" data-j="3"></button><button class="mi" data-j="4"></button><button class="mi" data-j="5"></button><span style="flex:1"></span><button class="mi vlk" data-p="xy" title="Lock Pad A so touching the viewer doesn't move it"></button><button class="mi vlatch" data-p="xy" title="Pin Pad A's effects on"></button><label class="mi vcol" data-p="xy" title="Pad A scope colour in the viewer"><i></i><input type="color"></label><span class="vsep"></span><button class="mi vlk" data-p="xy2" title="Lock Pad B so touching the viewer doesn't move it"></button><button class="mi vlatch" data-p="xy2" title="Pin Pad B's effects on"></button><label class="mi vcol" data-p="xy2" title="Pad B scope colour in the viewer"><i></i><input type="color"></label></div>
   <div id="vbox"><canvas id="vcan"></canvas><div id="vMsg">Load a video to see it here</div></div>
 </div>
 
@@ -1208,7 +1214,7 @@ const THEMES={
 };
 const SCREENDEF={view:'paper',...THEMES.paper,crt:true,curve:50,scan:50,video:true,trace:true};
 const SCREENS={
-  viewer:{vfx:'both',vfit:'contain',vcrt:'off',vrot:0,vscope:'none',vgrid:'on'},
+  viewer:{vfx:'both',vfit:'contain',vcrt:'off',vrot:0,vscope:'none',vgrid:'on',vcA:'',vcB:''},
   wave:{snap:true,view:'green',cBg:'#000000',cFg:'#33ff66',cCur:'#ffff00',crt:false,curve:30,scan:40},
   tempo:{view:'green',cBg:'#000000',cFg:'#33ff66',cCur:'#33ff66',crt:false,curve:30,scan:40}
 };
@@ -2457,8 +2463,17 @@ $('#viewer .tbtns i:last-child').addEventListener('click',e=>{e.stopPropagation(
 const vPan=store.get('remixer.vpan',{x:0,y:0}),vOver={x:0,y:0};
 // the big viewer is a touch pad too: it drives every pad that isn't locked (lock buttons on its menu bar)
 const vLock=store.get('remixer.vlock',{xy:false,xy2:false});
-function refreshVLock(){$$('.vlk').forEach(b=>{const p=b.dataset.p,col=getV(p,'cFg')||'#0f0';b.classList.toggle('on',!!vLock[p]);
-  b.innerHTML=`<i style="background:${col}"></i>${p==='xy'?'Pad A':'Pad B'}: ${vLock[p]?'Locked':'Live'}`;});}
+const vCol=p=>getV('viewer',p==='xy'?'vcA':'vcB')||getV(p,'cFg')||'#00ff66'; // scope colour in the viewer
+function refreshVLock(){
+  $$('.vlk').forEach(b=>{const p=b.dataset.p,h=`<i style="background:${vCol(p)}"></i>${p==='xy'?'Pad A':'Pad B'}: ${vLock[p]?'Locked':'Live'}`;b.classList.toggle('on',!!vLock[p]);if(b.innerHTML!==h)b.innerHTML=h;});
+  $$('.vlatch').forEach(b=>{if(!b.innerHTML)b.innerHTML=LOCK;b.classList.toggle('on',!!fx[b.dataset.p].latch);});
+  $$('.vcol').forEach(l=>{const c=vCol(l.dataset.p);l.querySelector('i').style.background=c;const inp=l.querySelector('input');if(document.activeElement!==inp)inp.value=c;});
+}
+$$('.vlatch').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();toggleLatch(b.dataset.p);refreshVLock();}));
+$$('.vcol input').forEach(inp=>{const p=inp.parentNode.dataset.p,k=p==='xy'?'vcA':'vcB';
+  inp.addEventListener('input',()=>{setV('viewer',k,inp.value);refreshVLock();});});
+$$('.vcol').forEach(l=>l.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();const inp=l.querySelector('input');inp.value=vCol(l.dataset.p);inp.click();}));
+setInterval(refreshVLock,300);
 $$('.vlk').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();const p=b.dataset.p;vLock[p]=!vLock[p];store.set('remixer.vlock',vLock);refreshVLock();}));
 refreshVLock();
 const livePads=()=>['xy','xy2'].filter(p=>!vLock[p]&&onPage(p));
@@ -2498,7 +2513,7 @@ const livePads=()=>['xy','xy2'].filter(p=>!vLock[p]&&onPage(p));
 function viewerMarks(){
   const g=vcan.getContext('2d'),W=vcan.width,H=vcan.height,d=devicePixelRatio||1;
   for(const p of ['xy','xy2']){const F=fx[p];if(vLock[p]||!F.on||!onPage(p))continue;
-    const x=F.gx*W,y=F.gy*H,r=14*d,col=getV(p,'cFg')||'#0f0';
+    const x=F.gx*W,y=F.gy*H,r=14*d,col=vCol(p);
     g.save();g.strokeStyle=col;g.lineWidth=2*d;g.shadowColor=col;g.shadowBlur=10*d;
     g.beginPath();g.arc(x,y,r,0,6.283);g.stroke();g.beginPath();g.moveTo(x-r*1.7,y);g.lineTo(x-r*.5,y);g.moveTo(x+r*.5,y);g.lineTo(x+r*1.7,y);g.moveTo(x,y-r*1.7);g.lineTo(x,y-r*.5);g.moveTo(x,y+r*.5);g.lineTo(x,y+r*1.7);g.stroke();
     g.shadowBlur=0;g.font=`700 ${Math.round(11*d)}px ${canvasFont}`;g.fillStyle=col;g.fillText(p==='xy'?'A':'B',x+r+3*d,p==='xy'?y-r*.6:y+r*1.2);g.restore();}
@@ -2541,12 +2556,21 @@ function drawViewer(){
   viewerMarks();
 }
 // lay the pads' oscilloscope traces (in their own colours, with their glow) over the viewer
+const tintC={};
+function tintScope(id,L){ // recolour a pad's trace for the viewer, keeping its brightness and glow
+  const col=vCol(id);if(col.toLowerCase()===(getV(id,'cFg')||'').toLowerCase())return L;
+  let T=tintC[id];if(!T||T.width!==L.width||T.height!==L.height){T=tintC[id]=document.createElement('canvas');T.width=L.width;T.height=L.height;}
+  const t=T.getContext('2d');t.globalCompositeOperation='source-over';t.clearRect(0,0,T.width,T.height);t.drawImage(L,0,0);
+  t.globalCompositeOperation='source-in';t.fillStyle=col;t.fillRect(0,0,T.width,T.height);        // solid colour, the trace's shape and glow
+  t.globalCompositeOperation='lighter';t.globalAlpha=.3;t.drawImage(L,0,0);t.globalAlpha=1;       // a little of the original hot core
+  t.globalCompositeOperation='source-over';return T;
+}
 function scopeOver(cv,force){
   const m=force||getV('viewer','vscope');if(!m||m==='none')return;
   const ids=m==='both'?['xy','xy2']:[m];
   const R=getV('viewer','vgrid')!=='off'?scopeGrid(cv,ids):[0,0,cv.width,cv.height]; // trace fits inside the graticule
   const g=cv.getContext('2d');g.save();g.globalCompositeOperation='lighter';
-  for(const id of ids){const L=scopeL[id];if(L&&L.width)g.drawImage(L,R[0],R[1],R[2],R[3]);}
+  for(const id of ids){const L=scopeL[id];if(L&&L.width)g.drawImage(tintScope(id,L),R[0],R[1],R[2],R[3]);}
   g.restore();
 }
 // oscilloscope graticule: 10 x 8 divisions, minor ticks, time / amplitude numbers, channel readouts
@@ -2573,7 +2597,7 @@ function scopeGrid(cv,ids){
   for(let j=0;j<=8;j+=2)g.fillText((1-j/4).toFixed(1),x0-6*d,y0+gh*j/8);
   // channel readouts in each pad's colour: CH1 Pad A  X: GLITCH 47%  Y: WARBLE 12%
   g.textAlign='left';g.textBaseline='top';g.font=`700 ${fs}px ${canvasFont}`;
-  ids.forEach((id,k)=>{const F=fx[id],ax=getV(id,'ax'),ay=getV(id,'ay'),col=getV(id,'cFg')||'#9fffc0';
+  ids.forEach((id,k)=>{const F=fx[id],ax=getV(id,'ax'),ay=getV(id,'ay'),col=vCol(id);
     const t=`CH${k+1} ${id==='xy'?'Pad A':'Pad B'}  X: ${(ax?FXNAME[ax]:'none').toUpperCase()} ${F.on?Math.round(dz(F.gx)*100)+'%':'--'}  Y: ${(ay?FXNAME[ay]:'none').toUpperCase()} ${F.on?Math.round(dz(1-F.gy)*100)+'%':'--'}`;
     g.fillStyle=col;g.fillText(t,x0+4*d,y0+4*d+k*(fs+4*d));});
   g.textAlign='right';g.fillStyle=`rgba(${ph},.75)`;g.fillText(`${bpm?bpm.toFixed(1):'--'} BPM  ${(span/10).toFixed(span<10?2:1)} ms/div  0.25/div`,x0+gw-4*d,y0+4*d);
