@@ -458,7 +458,7 @@ class Remixer extends AudioWorkletProcessor{
     const N=this.PSN;let p=this.psWi-d;if(p<0)p+=N;
     const i0=Math.floor(p),fr=p-i0;return buf[i0&(N-1)]*(1-fr)+buf[(i0+1)&(N-1)]*fr;
   }
-  report(force){if(this.playing||force)this.port.postMessage({t:'pos',p:this.ghost,q:this.pos,r:this.playing?this.rate*this.dir*(this.st?this.spC:1)*(this.psMode!=='k'?this.psR:1):0});}
+  report(force){if(this.playing||force)this.port.postMessage({t:'pos',ct:typeof currentTime!=='undefined'?currentTime+128/sampleRate:null,p:this.ghost,q:this.pos,r:this.playing?this.rate*this.dir*(this.st?this.spC:1)*(this.psMode!=='k'?this.psR:1):0});}
   process(_,outs){
     const o=outs[0],oL=o[0],oR=o[1]||o[0],N=oL.length;
     const L=this.L,R=this.R,n=this.n,X=this.xp;
@@ -678,6 +678,8 @@ async function ensureAudio(){
   aq.pk=ctx.createBiquadFilter();aq.pk.type='peaking';aq.pk.frequency.value=500;aq.pk.Q.value=.9;aq.pk.gain.value=0;
   stLP.connect(aq.in);aq.in.connect(aq.dry).connect(aq.lp);aq.in.connect(aq.del).connect(aq.wet).connect(aq.lp);aq.lp.connect(aq.pk);
   aq.bub=ctx.createGain();aq.bub.connect(bus);
+  aq.bubDel=ctx.createDelay(2);aq.bubFb=ctx.createGain();aq.bubFb.gain.value=.38;aq.bubTone=ctx.createBiquadFilter();aq.bubTone.type='lowpass';aq.bubTone.frequency.value=3500;
+  aq.bub.connect(aq.bubDel);aq.bubDel.connect(aq.bubTone).connect(aq.bubFb).connect(aq.bubDel);aq.bubTone.connect(bus);
   // ACID: 303-style resonant low-pass swept on every step, then drive
   ac.lp=ctx.createBiquadFilter();ac.lp.type='lowpass';ac.lp.frequency.value=20000;ac.lp.Q.value=0;
   ac.dry=ctx.createGain();ac.wet=ctx.createGain();ac.wet.gain.value=0;ac.sh=ctx.createWaveShaper();ac.sh.oversample='2x';
@@ -702,7 +704,7 @@ async function ensureAudio(){
   applyAll();
   node.port.onmessage=e=>{
     const m=e.data;
-    if(m.t==='pos'){posS=m.p;posAt=performance.now();if(m.q!=null){posQ=m.q;rateR=m.r;}}
+    if(m.t==='pos'){posS=m.p;posAt=performance.now();if(m.q!=null){posQ=m.q;rateR=m.r;posCt=m.ct;}}
     else if(m.t==='ended'){playing=false;posS=Math.round(effA()*lenS);posAt=performance.now();setPlayIcon();releaseWake();resetMomentary();}
   };
 }
@@ -1357,12 +1359,14 @@ const PATS=[ // n = semitones from the root, a = accent, s = slide into next not
  {n:[0,0,12,0,3,0,7,10,0,12,0,3,15,0,7,5],a:[1,0,0,1,0,0,1,0,1,0,0,1,0,1,0,0],s:[0,0,1,0,0,0,0,1,0,1,0,0,1,0,0,0],r:[0,0,0,0,0,1,0,0,0,0,0,0,0,0,1,0]},
  {n:[0,12,0,0,10,0,12,7,0,0,3,0,5,7,12,0],a:[1,0,1,0,0,1,0,0,1,0,0,1,0,0,1,0],s:[0,1,0,0,1,0,0,0,0,0,1,0,0,1,0,0],r:[0,0,0,1,0,0,0,0,0,1,0,0,0,0,0,1]},
  {n:[0,0,0,12,0,0,7,0,3,3,0,10,0,15,12,7],a:[1,0,0,1,0,0,1,0,0,1,0,1,0,0,1,0],s:[0,0,1,0,0,0,0,0,1,0,1,0,0,1,1,0],r:[0,1,0,0,0,1,0,0,0,0,0,0,1,0,0,0]}];
-let syNext=null;
+let syNext=null,posCt=null;
+// [song read position, the audio-clock time it is heard]: exact when the audio engine stamps its reports
+function schedBase(){return posCt!=null?[posQ,posCt]:[posQ+(performance.now()-posAt)/1000*rateR*sr,ctx.currentTime];}
 function acidSched(){
   if(!ctx||!sy.osc)return;
   const a=eff.acid,lvl=getV('fx','acSyn')/100,now=ctx.currentTime;
   if(!(a>0&&lvl>0&&playing&&lenS&&rateR>.05)){if(syNext!==null){sy.vca.gain.cancelScheduledValues(now);sy.vca.gain.setTargetAtTime(0,now,.01);syNext=null;}return;}
-  const pos=posQ+(performance.now()-posAt)/1000*rateR*sr,stepS=60/bpm*sr*getV('fx','acRate'),rel=pos-offSec*sr,b=rel/stepS;
+  const [pos,t0]=schedBase(),stepS=60/bpm*sr*getV('fx','acRate'),rel=pos-offSec*sr,b=rel/stepS;
   if(syNext===null||syNext<=Math.floor(b)-1||syNext>Math.floor(b)+6)syNext=Math.floor(b)+1;
   const pat=+getV('fx','acPat'),follow=pat<0&&songAna,P=PATS[Math.max(0,pat)|0]||PATS[0],kk=+getV('fx','acKey'),root=kk<0?songKey:kk,stepT=stepS/(rateR*sr);
   const stepSec=stepS/sr,shift=kk<0?0:((kk-songKey)%12+12)%12;
@@ -1370,8 +1374,9 @@ function acidSched(){
   const res=getV('fx','acRes')/100,envd=getV('fx','acEnv')/100;
   sy.f1.Q.setTargetAtTime(2+res*20,now,.02);sy.f2.Q.setTargetAtTime(1+res*6,now,.02);
   for(let guard=0;guard<8;guard++){
-    const dtS=(syNext*stepS-rel)/(rateR*sr);if(dtS>.15)break;
-    const T=now+Math.max(0,dtS),i=((syNext%16)+16)%16,pi=(i+15)%16;
+    const Tq=t0+(syNext*stepS-rel)/(rateR*sr);if(Tq-now>.15)break;
+    if(Tq<now-.01){syNext++;continue;} // already past
+    const T=Math.max(now,Tq),i=((syNext%16)+16)%16,pi=(i+15)%16;
     let st;
     if(follow){const g=genStep(syNext,stepSec),gp=genStep(syNext-1,stepSec);st={rest:g.rest,acc:g.acc,slide:g.slide,midi:g.midi+shift,slideIn:gp.slide&&!gp.rest&&!g.rest};}
     else st={rest:!!P.r[i],acc:!!P.a[i],slide:!!P.s[i],midi:36+root+P.n[i],slideIn:P.s[pi]&&!P.r[pi]&&!P.r[i]};
@@ -1461,18 +1466,41 @@ function detectKey(buf){ // strongest bass note (root + its fifth) over ~45 s
   }catch(e){return 9;}
 }
 // ---- aqua: little rising "bloop" bubbles ----
-function bubble(a){
-  const t=ctx.currentTime+.005,f0=250+Math.random()*900,dur=.04+Math.random()*.1,o=ctx.createOscillator(),g=ctx.createGain();
-  o.type='sine';o.frequency.setValueAtTime(f0,t);o.frequency.exponentialRampToValueAtTime(f0*(1.8+Math.random()*1.4),t+dur);
-  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.16*a,t+.004);g.gain.exponentialRampToValueAtTime(.0005,t+dur);
-  o.connect(g).connect(aq.bub);o.start(t);o.stop(t+dur+.02);
+function bubble(a,midi,T){ // a bubble that rises in pitch and lands on a note
+  const f1=440*Math.pow(2,(midi-69)/12),f0=f1*(.62+Math.random()*.12),dur=.09+Math.random()*.08,o=ctx.createOscillator(),o2=ctx.createOscillator(),g=ctx.createGain(),g2=ctx.createGain();
+  o.type='sine';o.frequency.setValueAtTime(f0,T);o.frequency.exponentialRampToValueAtTime(f1,T+dur*.45);
+  o2.type='sine';o2.frequency.setValueAtTime(f0*2,T);o2.frequency.exponentialRampToValueAtTime(f1*2,T+dur*.45);g2.gain.value=.18; // a little glassy overtone
+  g.gain.setValueAtTime(0,T);g.gain.linearRampToValueAtTime(.15*a,T+.004);g.gain.exponentialRampToValueAtTime(.0005,T+dur);
+  o.connect(g);o2.connect(g2).connect(g);g.connect(aq.bub);o.start(T);o2.start(T);o.stop(T+dur+.02);o2.stop(T+dur+.02);
 }
-let bubAt=0;
+// bubble notes: the current bar's chord tones (or the key's pentatonic), high up, on the 16th-note grid
+function bubbleNotes(sec){
+  let pcs,key=songKey;
+  if(songAna){const bar=60/bpm*4,bi=Math.floor((sec-offSec)/bar),cr=anaChord(offSec+bi*bar,offSec+(bi+1)*bar),th=songAna.scale.includes((cr+3)%12)?3:4;
+    pcs=[cr,(cr+th)%12,(cr+7)%12,(cr+(songAna.scale.includes((cr+10)%12)?10:11))%12];key=songAna.key;}
+  else pcs=[0,2,4,7,9].map(v=>(v+key)%12);
+  const out=[];for(let m=72;m<=96;m++)if(pcs.includes(m%12))out.push(m);return out;
+}
+let bubNext=null;
 function bubbleTick(){
-  const now=performance.now(),dt=Math.min(.1,(now-(bubAt||now))/1000);bubAt=now;
-  if(!ctx||!aq.bub||!playing||eff.aqua<=0)return;
-  const r=eff.aqua*getV('fx','aqBubS')/100*14;
-  if(Math.random()<r*dt){bubble(eff.aqua);if(Math.random()<.35)setTimeout(()=>bubble(eff.aqua*.8),30+Math.random()*80);}
+  if(!ctx||!aq.bub)return;
+  const a=eff.aqua,amt=getV('fx','aqBubS')/100,now=ctx.currentTime;
+  if(!(a>0&&amt>0&&playing&&lenS&&rateR>.05)){bubNext=null;return;}
+  aq.bubDel.delayTime.setTargetAtTime(Math.min(1.9,60/bpm*.75),now,.05); // dotted-8th echo
+  const [pos,t0]=schedBase(),stepS=60/bpm*sr*.25,rel=pos-offSec*sr,b=rel/stepS;
+  if(bubNext===null||bubNext<=Math.floor(b)-1||bubNext>Math.floor(b)+6)bubNext=Math.floor(b)+1;
+  for(let guard=0;guard<8;guard++){
+    const Tq=t0+(bubNext*stepS-rel)/(rateR*sr);if(Tq-now>.12)break;
+    if(Tq<now-.01){bubNext++;continue;}
+    const T=Math.max(now,Tq),onBeat=bubNext%4===0,p=a*amt*(onBeat?.55:.3);
+    if(Math.random()<p){
+      const notes=bubbleNotes((bubNext*stepS)/sr+offSec);let i=Math.floor(Math.random()*notes.length);
+      if(Math.random()<.18){ // a little rising run of bubbles
+        const st=60/bpm/8/rateR;for(let k=0;k<3+Math.floor(Math.random()*2);k++)bubble(a*(1-k*.12),notes[Math.min(notes.length-1,i+k)],T+k*st);
+      }else bubble(a,notes[i],T);
+    }
+    bubNext++;
+  }
 }
 function padSet(id,on){fx[id].on=on;pushFX();drawPad(id);}
 const GZ=[{s:2,l:'1/2'},{s:1,l:'1/4'},{s:.5,l:'1/8'},{s:.25,l:'1/16'},{s:.125,l:'1/32'}];
