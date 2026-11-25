@@ -227,6 +227,8 @@ body.min #viewer{opacity:0;pointer-events:none}
 #panel.open{display:flex}
 #panel>*{flex-shrink:0}
 #panel /* section header */
+.psub{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#404040;margin:7px 6px 1px;padding-bottom:1px;border-bottom:1px solid #a0a0a0;display:flex;align-items:center;gap:5px}.psub:before{content:'';width:7px;height:7px;background:var(--c,#808080);box-shadow:inset -1px -1px #0004}
+.prow.pmore{display:block!important;text-align:center}.pmorebtn{font:inherit;font-size:11px;border:0;background:var(--face);box-shadow:var(--raised);cursor:pointer;padding:2px 10px;margin:4px 0;white-space:nowrap;width:auto}.pmorebtn:active{box-shadow:var(--sunk,inset 1px 1px #000)}
 .ph .preset{font:inherit;font-size:10px;height:18px;padding:0 6px;margin-left:auto;margin-right:4px;border:0;background:var(--face);box-shadow:var(--raised);cursor:pointer;flex:0 0 auto}.ph .preset:active{box-shadow:var(--sunken)}
 .ph{display:flex;align-items:center;gap:5px;margin:7px 4px 2px;border-bottom:1px solid #808080;box-shadow:0 1px #fff;padding-bottom:2px}
 #panel .ph.tb{margin:0 0 4px;background:var(--title);padding:0 2px 0 4px;height:20px;border:0;box-shadow:none;position:sticky;top:-3px;z-index:1}
@@ -661,7 +663,7 @@ const fx={
   pitch:{on:false,latch:false,active:null},
   aquaM:{on:false,latch:false,hold:false,gx:.5,gy:.6},
   acidM:{on:false,latch:false,hold:false,gx:.6,gy:.35,mute:Array(16).fill(false),over:Array(16).fill(null),acc:false,sld:false},
-  angelM:{on:false,latch:false,hold:false,touches:new Map(),all:false,vowel:.5,spread:.5,halo:null}
+  angelM:{on:false,latch:false,hold:false,touches:new Map(),all:false,vowel:.5,spread:.5,swell:.8,halo:null}
 };
 const send=(m,tr)=>{if(node)node.port.postMessage(m,tr||[]);};
 
@@ -1211,12 +1213,12 @@ const FXSPEC={
     {k:'eFb',l:'Feedback',min:0,max:90,v:45,f:pct}],
   reverb:[{h:'REVERB'},
     {k:'rSize',l:'Size',min:5,max:60,v:25,f:v=>(v/10).toFixed(1)+'s'},
-    {k:'rDecay',l:'Decay',min:10,max:60,v:30,f:v=>v<20?'Slow':v<40?'Medium':'Fast'},
-    {k:'rPre',l:'Pre-delay',min:0,max:200,v:20,f:v=>v+'ms'},
     {k:'rTone',l:'Tone',min:10,max:100,v:60,f:v=>v<35?'Dark':v<70?'Warm':'Bright'},
-    {k:'rLow',l:'Low cut',min:20,max:800,v:120,f:v=>v+'Hz'},
-    {k:'rWidth',l:'Width',min:0,max:100,v:100,f:v=>v+'%'},
-    {k:'rLevel',l:'Level',min:20,max:200,v:100,f:v=>v+'%'}],
+    {k:'rLevel',l:'Level',min:20,max:200,v:100,f:v=>v+'%'},
+    {adv:1,k:'rDecay',l:'Decay',min:10,max:60,v:30,f:v=>v<20?'Slow':v<40?'Medium':'Fast'},
+    {adv:1,k:'rPre',l:'Pre-delay',min:0,max:200,v:20,f:v=>v+'ms'},
+    {adv:1,k:'rLow',l:'Low cut',min:20,max:800,v:120,f:v=>v+'Hz'},
+    {adv:1,k:'rWidth',l:'Width',min:0,max:100,v:100,f:v=>v+'%'}],
   gate:[{h:'GATE'},{k:'gRate',l:'Rate',chips:[['1/8',.5],['1/16',.25],['1/32',.125]],v:.25}],
   ring:[{h:'RING MOD'},
     {k:'rgMax',l:'Top freq',min:200,max:4000,v:1500,f:v=>v+'Hz'},
@@ -1228,60 +1230,76 @@ const FXSPEC={
     {k:'smHold',l:'Hold',min:0,max:100,v:80,f:pct},
     {k:'smMosh',l:'Datamosh',min:0,max:100,v:100,f:pct}],
   aqua:[{h:'AQUA'},
-    {k:'aqVis',l:'Visuals only (module)',toggle:1,v:false},
+    {sub:'Sound'},
     {k:'aqDepth',l:'Muffle',min:0,max:100,v:70,f:pct},
     {k:'aqSway',l:'Sway',min:0,max:100,v:50,f:pct},
+    {sub:'Bubbles'},
     {k:'aqBubS',l:'Bubble sounds',min:0,max:100,v:40,f:pct},
+    {k:'aqVoice',l:'Bubble voice',chips:[['Bubble','bub'],['Glass','glass'],['Marimba','mar'],['Kalimba','kal'],['Pluck','pluck'],['Soft pad','pad']],v:'bub'},
     {k:'aqNotes',l:'Bubble notes',chips:[['Chords','c'],['Melody','m'],['Harmony','h']],v:'h'},
-    {k:'aqBusy',l:'Bubble busy',min:0,max:100,v:50,f:pct},
-    {k:'aqOct',l:'Bubble range',chips:[['Low',-12],['Mid',0],['High',12]],v:0},
-    {k:'aqRuns',l:'Bubble runs',min:0,max:100,v:30,f:pct},
-    {k:'aqEcho',l:'Bubble echo',min:0,max:100,v:45,f:pct},
+    {sub:'Look'},
     {k:'aqCaus',l:'Caustics',min:0,max:100,v:80,f:pct},
     {k:'aqBubV',l:'Bubbles',min:0,max:100,v:50,f:pct},
     {k:'aqWeed',l:'Seaweed',min:0,max:100,v:50,f:pct},
+    {sub:'Fishing'},
     {k:'aqFish',l:'Fishing',chips:[['Fish + line','both'],['Fish only','fish'],['Line only','line'],['Off','off']],v:'both'},
     {k:'aqFishN',l:'Fish',min:1,max:8,v:4,f:v=>v+' fish'},
-    {k:'aqBite',l:'Bite chance',min:0,max:100,v:45,f:pct},
-    {k:'aqHook',l:'Hook depth',min:0,max:100,v:55,f:pct},
-    {k:'aqWiggle',l:'Worm wiggle',min:0,max:100,v:40,f:pct},
-    {k:'aqBiteFx',l:'Bite sound',min:0,max:100,v:70,f:pct},
-    {k:'aqReel',l:'Reel sound',min:0,max:100,v:60,f:pct},
-    {k:'aqReelRate',l:'Reel rhythm',chips:[['1/8',.5],['1/16',.25],['1/32',.125]],v:.25},
-    {k:'aqTwitch',l:'Line twitches',min:0,max:100,v:55,f:pct}],
+    {adv:1,k:'aqVis',l:'Visuals only (module)',toggle:1,v:false},
+    {adv:1,sub:'Bubble details'},
+    {adv:1,k:'aqBusy',l:'Bubble busy',min:0,max:100,v:50,f:pct},
+    {adv:1,k:'aqOct',l:'Bubble range',chips:[['Low',-12],['Mid',0],['High',12]],v:0},
+    {adv:1,k:'aqRuns',l:'Bubble runs',min:0,max:100,v:30,f:pct},
+    {adv:1,k:'aqEcho',l:'Bubble echo',min:0,max:100,v:45,f:pct},
+    {adv:1,sub:'Fishing details'},
+    {adv:1,k:'aqBite',l:'Bite chance',min:0,max:100,v:45,f:pct},
+    {adv:1,k:'aqHook',l:'Hook depth',min:0,max:100,v:55,f:pct},
+    {adv:1,k:'aqWiggle',l:'Worm wiggle',min:0,max:100,v:40,f:pct},
+    {adv:1,k:'aqBiteFx',l:'Bite sound',min:0,max:100,v:70,f:pct},
+    {adv:1,k:'aqReel',l:'Reel sound',min:0,max:100,v:60,f:pct},
+    {adv:1,k:'aqReelRate',l:'Reel rhythm',chips:[['1/8',.5],['1/16',.25],['1/32',.125]],v:.25},
+    {adv:1,k:'aqTwitch',l:'Line twitches',min:0,max:100,v:55,f:pct}],
   acid:[{h:'ACID'},
-    {k:'acVis',l:'Visuals only (module)',toggle:1,v:false},
+    {sub:'Synth'},
     {k:'acSyn',l:'Acid synth',min:0,max:100,v:40,f:pct},
     {k:'acWave',l:'Wave',chips:[['Saw','sawtooth'],['Square','square']],v:'sawtooth'},
     {k:'acPat',l:'Scale (acid + aqua)',chips:[['Song','song'],['Minor pent.','pent'],['Phrygian','phry'],['Blues','blues'],['Dorian','dorian'],['Root + 5th','octave']],v:'song'},
-    {k:'acBusy',l:'Busy',min:0,max:100,v:60,f:pct},
     {k:'acKey',l:'Key (acid + aqua)',min:-1,max:11,v:-1,f:v=>v<0?'Auto ('+NOTE[songKey]+(songAna&&songAna.minor?'m':'')+')':NOTE[v]},
-    {k:'acSong',l:'Song filter',min:0,max:100,v:45,f:pct},
-    {k:'acRes',l:'Resonance',min:0,max:100,v:50,f:pct},
-    {k:'acEnv',l:'Sweep',min:0,max:100,v:55,f:pct},
-    {k:'acRate',l:'Steps',chips:[['1/8',.5],['1/16',.25],['1/32',.125]],v:.25},
-    {k:'acDrive',l:'Drive',min:0,max:100,v:20,f:pct},
+    {sub:'Look'},
     {k:'acBub',l:'Sludge ripples',min:0,max:100,v:60,f:pct},
-    {k:'acGoo',l:'Goo',min:0,max:100,v:60,f:pct}],
+    {k:'acGoo',l:'Goo',min:0,max:100,v:60,f:pct},
+    {adv:1,k:'acVis',l:'Visuals only (module)',toggle:1,v:false},
+    {adv:1,sub:'Synth details'},
+    {adv:1,k:'acBusy',l:'Busy',min:0,max:100,v:60,f:pct},
+    {adv:1,k:'acRate',l:'Steps',chips:[['1/8',.5],['1/16',.25],['1/32',.125]],v:.25},
+    {adv:1,k:'acRes',l:'Resonance',min:0,max:100,v:50,f:pct},
+    {adv:1,k:'acEnv',l:'Sweep',min:0,max:100,v:55,f:pct},
+    {adv:1,k:'acDrive',l:'Drive',min:0,max:100,v:20,f:pct},
+    {adv:1,k:'acSong',l:'Song filter',min:0,max:100,v:45,f:pct}],
   angel:[{h:'ANGEL VOICES'},
-    {k:'anVis',l:'Visuals only (module)',toggle:1,v:false},
+    {sub:'Voices'},
     {k:'anPlay',l:'Module plays',chips:[['Voices + harp','both'],['Voices only','voices'],['Harp only','harp']],v:'both'},
-    {k:'anHarm',l:'Harmony',chips:[['Unison','u'],['Fifths','f'],['Triad','t'],['Seventh','s'],['Cluster','c'],['Melody + choir','m']],v:'t'},
     {k:'anType',l:'Voice type',chips:[['Choir','choir'],['Glass','glass'],['Warm pad','pad'],['Organ','organ'],['Robot','robot'],['Breathy','breath']],v:'choir'},
-    {k:'anVoices',l:'Voices per part',min:1,max:8,v:4,f:v=>v+(v>1?' voices':' voice')},
+    {k:'anHarm',l:'Harmony',chips:[['Unison','u'],['Fifths','f'],['Triad','t'],['Seventh','s'],['Cluster','c'],['Melody + choir','m']],v:'t'},
+    {k:'anVert',l:'Up / down does',chips:[['Volume swell','swell'],['Vowel','vowel']],v:'swell'},
     {k:'anOct',l:'Octave',chips:[['Bass',-24],['Baritone',-12],['Mid',0],['High',12],['Heaven',24]],v:0},
-    {k:'anPitch',l:'Pitch',min:-12,max:12,v:0,f:v=>(v>0?'+':'')+v+' st'},
-    {k:'anRev',l:'Reverb',chips:[['Chamber','chamber'],['Hall','hall'],['Cathedral','cath'],['Heaven','heaven'],['Shimmer','shimmer']],v:'cath'},
-    {k:'anSpace',l:'Reverb amount',min:0,max:100,v:65,f:pct},
-    {k:'anVib',l:'Vibrato',min:0,max:100,v:40,f:pct},
-    {k:'anFollow',l:'Chord changes',chips:[['Every beat (fastest)','fast'],['Every half bar','beat'],['Every bar','bar'],['Hold (steady)','hold']],v:'fast'},
-    {k:'anGlide',l:'Glide',min:0,max:300,v:25,f:v=>v?v+' ms':'instant'},
     {k:'anLevel',l:'Voices level',min:0,max:250,v:100,f:pct},
-    {k:'anDuck',l:'Duck the track',min:0,max:100,v:0,f:pct},
+    {sub:'Harp'},
     {k:'anHarp',l:'Harp arp',min:0,max:250,v:80,f:v=>v?v+'%':'off'},
-    {k:'anArp',l:'Arp pattern',chips:[['Up','up'],['Down','down'],['Up/down','ud'],['Random','rnd']],v:'up'},
-    {k:'anArpRate',l:'Arp speed',chips:[['1/8',.5],['1/16',.25],['1/32',.125]],v:.25},
-    {k:'anArpOct',l:'Arp range',chips:[['1 oct',1],['2 oct',2],['3 oct',3]],v:2}],
+    {adv:1,k:'anVis',l:'Visuals only (module)',toggle:1,v:false},
+    {adv:1,sub:'Voice details'},
+    {adv:1,k:'anVoices',l:'Voices per part',min:1,max:8,v:4,f:v=>v+(v>1?' voices':' voice')},
+    {adv:1,k:'anPitch',l:'Pitch',min:-12,max:12,v:0,f:v=>(v>0?'+':'')+v+' st'},
+    {adv:1,k:'anVib',l:'Vibrato',min:0,max:100,v:40,f:pct},
+    {adv:1,k:'anFollow',l:'Chord changes',chips:[['Every beat (fastest)','fast'],['Every half bar','beat'],['Every bar','bar'],['Hold (steady)','hold']],v:'fast'},
+    {adv:1,k:'anGlide',l:'Glide',min:0,max:300,v:25,f:v=>v?v+' ms':'instant'},
+    {adv:1,k:'anDuck',l:'Duck the track',min:0,max:100,v:0,f:pct},
+    {adv:1,sub:'Reverb'},
+    {adv:1,k:'anRev',l:'Reverb',chips:[['Chamber','chamber'],['Hall','hall'],['Cathedral','cath'],['Heaven','heaven'],['Shimmer','shimmer']],v:'cath'},
+    {adv:1,k:'anSpace',l:'Reverb amount',min:0,max:100,v:65,f:pct},
+    {adv:1,sub:'Harp details'},
+    {adv:1,k:'anArp',l:'Arp pattern',chips:[['Up','up'],['Down','down'],['Up/down','ud'],['Random','rnd']],v:'up'},
+    {adv:1,k:'anArpRate',l:'Arp speed',chips:[['1/8',.5],['1/16',.25],['1/32',.125]],v:.25},
+    {adv:1,k:'anArpOct',l:'Arp range',chips:[['1 oct',1],['2 oct',2],['3 oct',3]],v:2}],
   pitch:[{h:'PITCH'},
     {k:'pMode',l:'Mode',chips:[['Speed','s'],['Keep tempo','k'],['Keep pitch','t']],v:'k'},
     {k:'pRange',l:'Range',min:1,max:24,v:12,f:v=>v+' st'},
@@ -1305,11 +1323,10 @@ const SCREEN_LABELS={pad:['Back','Text','Slider'],wave:['Back','Wave','Playhead'
 const VIEWOPTS=[['paper','Paper'],['green','Green CRT'],['amber','Amber'],['blue','Blue screen'],['grey','Grey'],['custom','Custom']];
 function screenRows(id,kind){
   const L=SCREEN_LABELS[kind];
-  const rows=[{k:'view',l:'Theme',select:VIEWOPTS,ns:id},
-    {l:'Colors',colors:[['cBg',L[0]],['cFg',L[1]],['cCur',L[2]]],ns:id},
-    {k:'crt',l:'Old TV',toggle:1,ns:id}];
-  if(kind==='pad')rows.splice(2,0,{k:'video',l:'Show video',toggle:1,ns:id},{k:'trace',l:'Scope trace',toggle:1,ns:id});
-  if(getV(id,'crt'))rows.push({k:'curve',l:'Bubble',min:0,max:100,v:50,f:pct,ns:id},{k:'scan',l:'Scanlines',min:0,max:100,v:50,f:pct,ns:id});
+  const rows=[{k:'view',l:'Theme',select:VIEWOPTS,ns:id}];
+  if(kind==='pad')rows.push({k:'video',l:'Show video',toggle:1,ns:id},{k:'trace',l:'Scope trace',toggle:1,ns:id});
+  rows.push({adv:1,l:'Colors',colors:[['cBg',L[0]],['cFg',L[1]],['cCur',L[2]]],ns:id},{adv:1,k:'crt',l:'Old TV',toggle:1,ns:id});
+  if(getV(id,'crt'))rows.push({adv:1,k:'curve',l:'Bubble',min:0,max:100,v:50,f:pct,ns:id},{adv:1,k:'scan',l:'Scanlines',min:0,max:100,v:50,f:pct,ns:id});
   return rows;
 }
 const PADDEF={xy:{ax:'glitch',ay:'warble',...SCREENDEF,view:'green',...THEMES.green},xy2:{ax:'lpf',ay:'echo',...SCREENDEF,view:'amber',...THEMES.amber}};
@@ -1660,6 +1677,8 @@ function harpTick(amt){
     hNext++;
   }
 }
+const anSwell=()=>getV('fx','anVert')!=='vowel';
+function anVert(F,v){v=Math.max(0,Math.min(1,v));if(anSwell())F.swell=v;else F.vowel=v;} // up/down = volume swell or vowel
 function angelTick(){
   if(!an.mix)return;
   const F=fx.angelM,now=ctx.currentTime,here=onPage('angelM'),touching=F.touches.size>0||F.all||F.latch;
@@ -1667,7 +1686,8 @@ function angelTick(){
   const modV=modLive&&play!=='harp',modH=modLive&&play!=='voices'; // what the module plays: voices, harp, or both
   const live=modV||padV>0,vAmt=modV?1:padV,VT=VTYPES[getV('fx','anType')]||VTYPES.choir;
   an.padDriven=!modV&&padV>0;
-  an.vca.gain.setTargetAtTime(live?getV('fx','anLevel')/100*.6*VT.lv*vAmt:0,now,live?.12:.9);
+  const swl=modV&&anSwell()?Math.pow(F.swell,1.5):1; // volume swell from finger height
+  an.vca.gain.setTargetAtTime(live?getV('fx','anLevel')/100*.6*VT.lv*vAmt*swl:0,now,live?.07:.9);
   an.trk.gain.setTargetAtTime(live?1-getV('fx','anDuck')/100*.75*vAmt:1,now,live?.15:.6); // duck the song under the voices
   const hAmt=Math.max(modH?getV('fx','anHarp')/100:0,padH*Math.max(.6,getV('fx','anHarp')/100)); // harp: with the voices, or alone from a pad axis
   harpTick(hAmt);
@@ -1709,12 +1729,18 @@ function angelTick(){
   an.parts.forEach((p,j)=>{const on=an.padDriven||F.all||F.latch||[...F.touches.values()].some(t=>t.part===j);if(on!==p.on){p.on=on;p.g.gain.cancelScheduledValues(now);p.g.gain.setTargetAtTime(on?1:0,now,on?.18:.7);}});
 }
 // ---- aqua: little rising "bloop" bubbles ----
-function bubble(a,midi,T){ // a bubble that rises in pitch and lands on a note
-  const f1=440*Math.pow(2,(midi-69)/12),f0=f1*(.62+Math.random()*.12),dur=.09+Math.random()*.08,o=ctx.createOscillator(),o2=ctx.createOscillator(),g=ctx.createGain(),g2=ctx.createGain();
-  o.type='sine';o.frequency.setValueAtTime(f0,T);o.frequency.exponentialRampToValueAtTime(f1,T+dur*.45);
-  o2.type='sine';o2.frequency.setValueAtTime(f0*2,T);o2.frequency.exponentialRampToValueAtTime(f1*2,T+dur*.45);g2.gain.value=.18; // a little glassy overtone
-  g.gain.setValueAtTime(0,T);g.gain.linearRampToValueAtTime(.15*a,T+.004);g.gain.exponentialRampToValueAtTime(.0005,T+dur);
-  o.connect(g);o2.connect(g2).connect(g);g.connect(aq.bub);o.start(T);o2.start(T);o.stop(T+dur+.02);o2.stop(T+dur+.02);
+function bubble(a,midi,T){ // one bubble note, in the chosen Bubble voice
+  const v=getV('fx','aqVoice')||'bub',f1=440*Math.pow(2,(midi-69)/12),out=ctx.createGain();out.connect(aq.bub);
+  const osc=(type,f,gain,att,dec,f0)=>{const o=ctx.createOscillator(),g=ctx.createGain();o.type=type;if(f0){o.frequency.setValueAtTime(f0,T);o.frequency.exponentialRampToValueAtTime(f,T+dec*.45);}else o.frequency.value=f;
+    g.gain.setValueAtTime(0,T);g.gain.linearRampToValueAtTime(gain*a,T+att);g.gain.exponentialRampToValueAtTime(.0005,T+att+dec);o.connect(g).connect(out);o.start(T);o.stop(T+att+dec+.05);};
+  const filt=(type,gain,att,dec,lpA,lpB,det)=>{const o=ctx.createOscillator(),lp=ctx.createBiquadFilter(),g=ctx.createGain();o.type=type;o.frequency.value=f1;if(det)o.detune.value=(Math.random()-.5)*det;lp.type='lowpass';lp.frequency.setValueAtTime(f1*lpA,T);lp.frequency.exponentialRampToValueAtTime(f1*lpB,T+att+dec*.6);
+    g.gain.setValueAtTime(0,T);g.gain.linearRampToValueAtTime(gain*a,T+att);g.gain.exponentialRampToValueAtTime(.0005,T+att+dec);o.connect(lp).connect(g).connect(out);o.start(T);o.stop(T+att+dec+.05);};
+  if(v==='glass'){osc('sine',f1,.12,.004,1.1);osc('sine',f1*2.76,.045,.002,.45);osc('sine',f1*5.4,.018,.002,.2);}   // bell: bright inharmonic partials, long ring
+  else if(v==='mar'){osc('sine',f1,.18,.003,.35);osc('sine',f1*4,.05,.002,.07);}                                  // marimba: woody and short
+  else if(v==='kal'){osc('sine',f1,.15,.002,.6);osc('sine',f1*3.01,.05,.002,.12);osc('triangle',f1*2,.02,.001,.05);} // kalimba: metal tine
+  else if(v==='pluck')filt('triangle',.2,.003,.55,8,1.2);                                                           // soft plucked string
+  else if(v==='pad')filt('sawtooth',.06,.12,.8,2.5,2,14);                                                           // slow soft pad
+  else{const f0=f1*(.62+Math.random()*.12),dur=.09+Math.random()*.08;osc('sine',f1,.15,.004,dur,f0);osc('sine',f1*2,.027,.004,dur,f0*2);} // the original rising bubble
 }
 // bubble notes: the current bar's chord tones (or the key's pentatonic), high up, on the 16th-note grid
 // one shared harmony for the acid line and the bubbles: same key, same scale, same chord in each bar
@@ -1882,7 +1908,7 @@ function drawCross(g,W,H,d,F,col='#000080',gx=F.gx,gy=F.gy){
   g.strokeStyle='#000';g.lineWidth=d;g.strokeRect(x-r+.5,y-r+.5,2*r-1,2*r-1);
   if(F.on){g.fillStyle='rgba(255,255,255,.8)';g.fillRect(x-r+2*d,y-r+2*d,2*r-4*d,d);}
 }
-const rgbOf=h=>[1,3,5].map(i=>parseInt(h.substr(i,2),16)).join(',');
+const rgbOf=h=>{h=typeof h==='string'?h.trim():'';if(/^#[0-9a-f]{3}$/i.test(h))h='#'+h[1]+h[1]+h[2]+h[2]+h[3]+h[3];if(!/^#[0-9a-f]{6}/i.test(h)){const m=h.match(/\d+/g);return m&&m.length>=3?m.slice(0,3).join(','):'200,200,200';}return [1,3,5].map(i=>parseInt(h.substr(i,2),16)).join(',');};
 /* oscilloscope inside FX pads: reacts to the pad's own effects */
 const scopeL={};
 /* video in the pads, bent by the pad's own effects */
@@ -2232,8 +2258,8 @@ function scopeColor(id,a){
   let best=null,bv=0;for(const k in a)if(a[k]>bv){bv=a[k];best=k;}
   const light=lumOf(getV(id,'cBg'))>.5;
   if(!best)return fx[id].on?getV(id,'cCur'):`rgba(${rgbOf(getV(id,'cFg'))},.45)`;
-  if(!light){const c=rgbOf(FXCOL[best]).split(',').map(v=>Math.round(v*.85));return `rgb(${c})`;}
-  const c=rgbOf(FXCOL[best]).split(',').map(v=>Math.round(v*.72));
+  if(!light){const c=rgbOf(FXCOL[best]||'#c0c0c0').split(',').map(v=>Math.round(v*.85));return `rgb(${c})`;}
+  const c=rgbOf(FXCOL[best]||'#c0c0c0').split(',').map(v=>Math.round(v*.72));
   return `rgb(${c})`;
 }
 const scopeSpan={};
@@ -2492,11 +2518,12 @@ const MODS={
     box.addEventListener('pointerdown',e=>{e.preventDefault();box.setPointerCapture(e.pointerId);const p=at(e);
       const now=performance.now(),dbl=now-lastT<320&&Math.hypot(e.clientX-lastX,e.clientY-lastY)<40;lastT=dbl?0:now;lastX=e.clientX;lastY=e.clientY;
       if(dbl){toggleLatch('angelM');upd();return;}
-      if(p.halo){F.all=true;F.haloId=e.pointerId;F.halo={x0:e.clientX,y0:e.clientY,v0:F.vowel,s0:F.spread};}else{F.touches.set(e.pointerId,p);F.vowel=1-(p.y-.16)/.84;}upd();});
+      const sw=anSwell();
+      if(p.halo){F.all=true;F.haloId=e.pointerId;F.halo={x0:e.clientX,y0:e.clientY,v0:sw?F.swell:F.vowel,s0:F.spread};}else{F.touches.set(e.pointerId,p);anVert(F,1-(p.y-.16)/.84);}upd();});
     box.addEventListener('pointermove',e=>{
       if(e.pointerId===F.haloId&&F.halo){const r=c.getBoundingClientRect(),h=F.halo; // halo: up/down sweeps the vowels, side to side spreads the choir
-        F.vowel=Math.max(0,Math.min(1,h.v0+(h.y0-e.clientY)/(r.height*.5)));F.spread=Math.max(0,Math.min(1,h.s0+(e.clientX-h.x0)/(r.width*.6)));return;}
-      if(!F.touches.has(e.pointerId))return;const p=at(e);if(p.halo)p.part=F.touches.get(e.pointerId).part;F.touches.set(e.pointerId,p);F.vowel=Math.max(0,Math.min(1,1-(p.y-.16)/.84));});
+        anVert(F,h.v0+(h.y0-e.clientY)/(r.height*.5));F.spread=Math.max(0,Math.min(1,h.s0+(e.clientX-h.x0)/(r.width*.6)));return;}
+      if(!F.touches.has(e.pointerId))return;const p=at(e);if(p.halo)p.part=F.touches.get(e.pointerId).part;F.touches.set(e.pointerId,p);anVert(F,1-(p.y-.16)/.84);});
     const end=e=>{F.touches.delete(e.pointerId);if(F.haloId===e.pointerId){F.all=false;F.haloId=null;F.halo=null;}upd();};
     box.addEventListener('pointerup',end);box.addEventListener('pointercancel',end);box.addEventListener('contextmenu',e=>e.preventDefault());
   }},
@@ -2609,7 +2636,7 @@ function chaosDrive(on){
   else if(id==='pd'){if(!fx.pump.latch&&fx.pump.on!==on)setPump(on);}
   else if(id==='tape'){if(!fx.tape.latch&&fx.tape.on!==on)setTape(on);}
   else if(id==='pitch'){if(on){const st=PITCHES[Math.min(PITCHES.length-1,Math.floor(u*PITCHES.length))];if(fx.pitch.active!==st)setPitch(st);}else if(!fx.pitch.latch)setPitch(null);}
-  else if(id==='angelM'){const F=fx.angelM;F.all=on;if(on){F.vowel=v;F.spread=Math.min(1,.3+E);}F.on=F.touches.size>0||F.all||F.latch;}
+  else if(id==='angelM'){const F=fx.angelM;F.all=on;if(on){anVert(F,v);F.spread=Math.min(1,.3+E);}F.on=F.touches.size>0||F.all||F.latch;}
 }
 function chaosInfo(){
   const show=(CH.changed.length?CH.changed:CH.rows.map((_,i)=>i).slice(0,4)).slice(0,4).map(i=>{const r=CH.rows[i],v=getV(CH.ns,r.k);
@@ -2721,14 +2748,14 @@ function drawAngelMod(){
     if(on&&Math.random()<.12)angelSpk.push({x:cx/W+(Math.random()-.5)*.06,y:.88,v:.35+Math.random()*.35,life:1,c:j});}
   // halo bar: hold for the full choir
   const ha=F.all||F.latch;drawHalo(g,W,H,d,top,F.spread,ha,t);
-  g.font=`700 ${Math.round(10*d)}px ${canvasFont}`;g.textAlign='center';g.lineWidth=3*d;g.strokeStyle='rgba(255,250,225,.85)';g.fillStyle='#4a2a00';{const _tx=F.halo?`${VOWEL_NAMES[Math.min(4,Math.round(F.vowel*4))]} · SPREAD ${Math.round(F.spread*100)}%  (up/down vowel, left/right spread)`:F.latch?'CHOIR HELD (double-tap to release)':'HOLD HALO = FULL CHOIR  ·  up/down vowel, left/right spread';g.strokeText(_tx,W/2,top*.55+4*d);g.fillText(_tx,W/2,top*.55+4*d);};
+  g.font=`700 ${Math.round(10*d)}px ${canvasFont}`;g.textAlign='center';g.lineWidth=3*d;g.strokeStyle='rgba(255,250,225,.85)';g.fillStyle='#4a2a00';{const _ud=anSwell()?'swell':'vowel',_tx=F.halo?`${anSwell()?'SWELL '+Math.round(F.swell*100)+'%':VOWEL_NAMES[Math.min(4,Math.round(F.vowel*4))]} · SPREAD ${Math.round(F.spread*100)}%  (up/down ${_ud}, left/right spread)`:F.latch?'CHOIR HELD (double-tap to release)':`HOLD HALO = FULL CHOIR  ·  up/down ${_ud}, left/right spread`;g.strokeText(_tx,W/2,top*.55+4*d);g.fillText(_tx,W/2,top*.55+4*d);};
   // sparkles
   g.save();g.globalCompositeOperation='lighter';
   const sdt=Math.min(.05,(performance.now()-(drawAngelMod.at||performance.now()))/1000);drawAngelMod.at=performance.now();
   for(const s of angelSpk){s.y-=s.v*sdt;s.life-=sdt*.55;const x=s.x*W,y=s.y*H,r=(1.5+s.life*2)*d;g.fillStyle=`rgba(255,240,190,${Math.max(0,s.life).toFixed(2)})`;g.fillRect(x-r/2,y-r*1.5,r,r*3);g.fillRect(x-r*1.5,y-r/2,r*3,r);}
   g.restore();for(let i=angelSpk.length-1;i>=0;i--)if(angelSpk[i].life<=0||angelSpk.length>220)angelSpk.splice(i,1);
   // the vowel being sung, and settings
-  if(F.on){g.font=`700 ${Math.round(Math.min(W,H)*.16)}px ${canvasFont}`;g.textAlign='center';g.fillStyle='rgba(255,255,255,.22)';g.fillText(VOWEL_NAMES[Math.min(4,Math.round(Math.max(0,Math.min(1,F.vowel))*4))],W/2,H*.62);}
+  if(F.on){g.font=`700 ${Math.round(Math.min(W,H)*.16)}px ${canvasFont}`;g.textAlign='center';g.fillStyle='rgba(255,255,255,.22)';g.fillText(anSwell()?Math.round(F.swell*100)+'%':VOWEL_NAMES[Math.min(4,Math.round(Math.max(0,Math.min(1,F.vowel))*4))],W/2,H*.62);}
   g.font=`${Math.round(10*d)}px ${canvasFont}`;g.textAlign='left';g.fillStyle='rgba(255,250,235,.85)';
   g.fillText(`${({u:'Unison',f:'Fifths',t:'Triad',s:'Seventh',c:'Cluster',m:'Melody + choir'})[getV('fx','anHarm')]} · ${getV('fx','anVoices')} voices · ${({chamber:'Chamber',hall:'Hall',cath:'Cathedral',heaven:'Heaven',shimmer:'Shimmer'})[getV('fx','anRev')]}`,6*d,top+14*d);
   // the same curved glass as the FX pads
@@ -2820,8 +2847,8 @@ const MENUS={
   stut:[{k:'slide',l:'Slide',opts:[['Pitch','p'],['Filter','f'],['Both','b']]},{k:'range',l:'Range',opts:[3,5,7,12,24].map(v=>['±'+v,v])}],
   tape:[{k:'len',l:'Length',opts:[['½ beat',.5],['1 beat',1],['2 beats',2],['4 beats',4]]},{k:'spin',l:'Spin',opts:[['On',true],['Off',false]]}],
   viewer:[{k:'vfx',l:'Effects',opts:[['Both pads','both'],['Pad A only','xy'],['Pad B only','xy2'],['None (clean)','none']]},{k:'vfit',l:'View',opts:[['Fit whole frame','contain'],['Fill window','cover']]},{k:'vcrt',l:'Screen',opts:[['Clean','off'],['Old TV (subtle)','soft'],['Old TV (strong)','hard']]},{k:'vrot',l:'Rotate',opts:[['0°',0],['90° ↻',90],['180°',180],['270° ↻',270]]},{k:'vscope',l:'Scope',opts:[['Off','none'],['Pad A','xy'],['Pad B','xy2'],['Both pads','both']]},{k:'vgrid',l:'Grid',opts:[['On','on'],['Off','off']]}],
-  angelM:[{k:'anPlay',l:'Plays',opts:[['Voices + harp','both'],['Voices only','voices'],['Harp only','harp']]},{k:'anHarm',l:'Harmony',opts:[['Unison','u'],['Fifths','f'],['Triad','t'],['Seventh','s'],['Cluster','c'],['Melody + choir','m']]},{k:'anRev',l:'Reverb',opts:[['Chamber','chamber'],['Hall','hall'],['Cathedral','cath'],['Heaven','heaven'],['Shimmer','shimmer']]},{k:'anType',l:'Voice',opts:[['Choir','choir'],['Glass','glass'],['Warm pad','pad'],['Organ','organ'],['Robot','robot'],['Breathy','breath']]},{k:'anFollow',l:'Chords',opts:[['Every beat','fast'],['Half bar','beat'],['Every bar','bar'],['Hold','hold']]}],
-  aquaM:[{k:'aqNotes',l:'Notes',opts:[['Chords','c'],['Melody','m'],['Harmony','h']]},{k:'aqOct',l:'Range',opts:[['Low',-12],['Mid',0],['High',12]]}],
+  angelM:[{k:'anPlay',l:'Plays',opts:[['Voices + harp','both'],['Voices only','voices'],['Harp only','harp']]},{k:'anType',l:'Voice',opts:[['Choir','choir'],['Glass','glass'],['Warm pad','pad'],['Organ','organ'],['Robot','robot'],['Breathy','breath']]},{k:'anHarm',l:'Harmony',opts:[['Unison','u'],['Fifths','f'],['Triad','t'],['Seventh','s'],['Cluster','c'],['Melody + choir','m']]},{k:'anVert',l:'Up/down',opts:[['Volume swell','swell'],['Vowel','vowel']]}],
+  aquaM:[{k:'aqVoice',l:'Voice',opts:[['Bubble','bub'],['Glass','glass'],['Marimba','mar'],['Kalimba','kal'],['Pluck','pluck'],['Soft pad','pad']]},{k:'aqNotes',l:'Notes',opts:[['Chords','c'],['Melody','m'],['Harmony','h']]},{k:'aqOct',l:'Range',opts:[['Low',-12],['Mid',0],['High',12]]}],
   acidM:[{k:'acPat',l:'Scale',opts:[['Song','song'],['Minor pent.','pent'],['Phrygian','phry'],['Blues','blues'],['Dorian','dorian'],['Root + 5th','octave']]},{k:'acWave',l:'Wave',opts:[['Saw','sawtooth'],['Square','square']]},{k:'acRate',l:'Steps',opts:[['1/8',.5],['1/16',.25],['1/32',.125]]}],
   pitch:[{k:'mode',l:'Mode',opts:[['Speed','s'],['Keep tempo','k'],['Keep pitch','t']]},{k:'glide',l:'Glide',opts:[0,60,120,250,500,800].map(v=>[v+'ms',v])}]
 };
@@ -3049,9 +3076,13 @@ function bindCfg(btn,id,slot){
 }
 function openPanel(id,slot,keepPinned){
   panelMod=id;if(!keepPinned)panelPinned=false;
-  const rows=panelRows(id);let h='',color='';
+  const rows=panelRows(id);let h='',color='',sec='',moreShown=false,moreOpen=false;
   rows.forEach((r,i)=>{
-    if(r.h){color=r.c;h+=`<div class="ph${i?'':' tb'}"><h4 style="--sc:${r.c}">${r.h}</h4><button class="preset" data-sec="${i}" title="Put this effect's settings back to their defaults">Reset</button>${i?'':'<button id="pClose" aria-label="Close">×</button>'}</div>`;return;}
+    if(r.h){sec=r.h;moreShown=false;color=r.c;h+=`<div class="ph${i?'':' tb'}"><h4 style="--sc:${r.c}">${r.h}</h4><button class="preset" data-sec="${i}" title="Put this effect's settings back to their defaults">Reset</button>${i?'':'<button id="pClose" aria-label="Close">×</button>'}</div>`;return;}
+    if(r.adv){ // the less-used settings sit behind a "More settings" button, per section
+      if(!moreShown){moreShown=true;moreOpen=!!store.get('remixer.more.'+sec,false);h+=`<div class="prow pmore"><button class="pmorebtn" data-sec="${sec}">${moreOpen?'▾ Fewer settings':'▸ More settings'}</button></div>`;}
+      if(!moreOpen)return;}
+    if(r.sub){h+=`<div class="psub"${color?` style="--c:${color}"`:''}>${r.sub}</div>`;return;}
     const x=getV(r.ns,r.k),da=`data-k="${r.k}" data-ns="${r.ns}"`;
     if(r.select)h+=`<div class="prow">${r.l}<select ${da}>${r.select.map(([v,l])=>`<option value="${v}"${v===x?' selected':''}>${l}</option>`).join('')}</select></div>`;
     else if(r.chips)h+=`<div class="prow" style="--c:${color}">${r.l}<div class="pchips">${r.chips.map(([l,v])=>`<button class="chip${v===x?' on':''}" ${da} data-v="${v}">${l}</button>`).join('')}</div></div>`;
@@ -3076,6 +3107,7 @@ function openPanel(id,slot,keepPinned){
     for(let i=i0+1;i<rows.length&&!rows[i].h;i++){const r=rows[i];const ns=(r.ns==='aquaM'||r.ns==='acidM'||r.ns==='angelM')?'fx':r.ns;
       const keys=r.colors?r.colors.map(c=>c[0]):r.k?[r.k]:[];if(cfg[ns])keys.forEach(k=>{delete cfg[ns][k];});touched.add(ns);}
     store.set('remixer.cfg',cfg);touched.forEach(ns=>applyCfg(ns));refreshMenus();pushFX();openPanel(id,slot,true);});
+  panel.querySelectorAll('.pmorebtn').forEach(b=>b.onclick=()=>{const k='remixer.more.'+b.dataset.sec;store.set(k,!store.get(k,false));openPanel(id,slot,true);placePanel(slot);});
   $('#pClose').onclick=closePanel;
   panel.classList.add('open');placePanel(slot);
   $$('.cfg').forEach(b=>b.classList.remove('on'));
