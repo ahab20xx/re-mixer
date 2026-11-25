@@ -1245,7 +1245,8 @@ const FXSPEC={
     {k:'anRev',l:'Reverb',chips:[['Chamber','chamber'],['Hall','hall'],['Cathedral','cath'],['Heaven','heaven'],['Shimmer','shimmer']],v:'cath'},
     {k:'anSpace',l:'Reverb amount',min:0,max:100,v:65,f:pct},
     {k:'anVib',l:'Vibrato',min:0,max:100,v:40,f:pct},
-    {k:'anFollow',l:'Chord changes',chips:[['Every bar','bar'],['Every half bar','beat'],['Hold (steady)','hold']],v:'bar'},
+    {k:'anFollow',l:'Chord changes',chips:[['Every beat (fastest)','fast'],['Every half bar','beat'],['Every bar','bar'],['Hold (steady)','hold']],v:'fast'},
+    {k:'anGlide',l:'Glide',min:0,max:300,v:25,f:v=>v?v+' ms':'instant'},
     {k:'anLevel',l:'Level',min:0,max:100,v:70,f:pct}],
   pitch:[{h:'PITCH'},
     {k:'pMode',l:'Mode',chips:[['Speed','s'],['Keep tempo','k'],['Keep pitch','t']],v:'k'},
@@ -1464,7 +1465,7 @@ function analyzeSong(buf){
     const n=Math.floor(ch.length/ds),x=new Float32Array(n);
     for(let i=0;i<n;i++){let v=0;for(let k=0;k<ds;k++){const j=i*ds+k;v+=ch[j]+(ch2?ch2[j]:0);}x[i]=v/ds;}
     const goer=(m,o,B)=>{const co=2*Math.cos(2*Math.PI*440*Math.pow(2,(m-69)/12)/fs);let s1=0,s2=0;for(let i=0;i<B;i++){const s0=x[o+i]+co*s1-s2;s2=s1;s1=s0;}return s1*s1+s2*s2-co*s1*s2;};
-    const hop=.25,nf=Math.max(1,Math.floor(n/fs/hop)),BB=Math.floor(fs*.5),BM=Math.floor(fs*.25);
+    const hop=.125,nf=Math.max(1,Math.floor(n/fs/hop)),BB=Math.floor(fs*.5),BM=Math.floor(fs*.25);
     const bass=new Float32Array(nf*12),mid=new Float32Array(nf*12),mel=new Int8Array(nf).fill(-1),melE=new Float32Array(nf),tot=new Float64Array(12);
     for(let f=0;f<nf;f++){
       const c=Math.floor(f*hop*fs);
@@ -1501,12 +1502,12 @@ function chordAt(sec,res){ // the song's chord at this moment: res 'bar' (4 beat
   const A=songAna,SC=acScale(),key=A.id+'|'+bpm.toFixed(3)+'|'+offSec.toFixed(3)+'|'+acStyle();
   if(!chordLine||chordLine.key!==key){
     const mk=beats=>{const seg=60/bpm*beats,n=Math.ceil((A.len-offSec)/seg)+2,out=new Int8Array(n);let prev=-1;
-      for(let i=0;i<n;i++){const t0=offSec+(i-1)*seg;const sc=chordScores(Math.max(0,t0),Math.max(0,t0+seg),SC);let best=sc[0];for(const c of sc)if(c.s>best.s)best=c;
+      for(let i=0;i<n;i++){const t0=offSec+(i-1)*seg;const sc=chordScores(Math.max(0,t0),Math.max(0,t0+seg*(beats===1?1.5:1)),SC);let best=sc[0];for(const c of sc)if(c.s>best.s)best=c;
         const p=prev>=0?sc.find(c=>c.r===prev):null;prev=p&&p.s>=best.s*.82?prev:best.r;out[i]=prev;}  // hysteresis: no flicker
       return {seg,out};};
-    chordLine={key,bar:mk(4),half:mk(2)};
+    chordLine={key,bar:mk(4),half:mk(2),beat:mk(1)};
   }
-  const L=chordLine[res==='half'?'half':'bar'],i=Math.floor((sec-offSec)/L.seg)+1;return L.out[Math.max(0,Math.min(L.out.length-1,i))];
+  const L=chordLine[res==='half'?'half':res==='beat'?'beat':'bar'],i=Math.floor((sec-offSec)/L.seg)+1;return L.out[Math.max(0,Math.min(L.out.length-1,i))];
 }
 function anaChord(s0,s1){ // strongest bass note in a time range that fits the key (root + fifth)
   const A=songAna,f0=Math.max(0,Math.floor(s0/A.hop)),f1=Math.min(A.mel.length-1,Math.ceil(s1/A.hop)),c=new Float64Array(12);
@@ -1566,7 +1567,7 @@ function makeIR(type){ // generated room responses for each reverb flavour
   return irCache[type]=buf;
 }
 function angelVoicing(sec,prev){ // the notes each part sings now
-  const H=harmonyAt(sec,getV('fx','anFollow')==='beat'?'half':'bar'),SC=H.SC,n=SC.length,i=SC.indexOf(H.cr),mode=getV('fx','anHarm');
+  const fl=getV('fx','anFollow'),H=harmonyAt(sec,fl==='beat'?'half':fl==='fast'?'beat':'bar'),SC=H.SC,n=SC.length,i=SC.indexOf(H.cr),mode=getV('fx','anHarm');
   const deg=k=>SC[(i+k)%n];let pcs;
   if(mode==='u')pcs=[H.cr];
   else if(mode==='f')pcs=[H.cr,SC.includes((H.cr+7)%12)?(H.cr+7)%12:deg(4)];
@@ -1605,12 +1606,23 @@ function angelTick(){
   const vx=Math.max(0,Math.min(.999,F.vowel))*4,vi=Math.floor(vx),vf=vx-vi,A=VOWELS[vi],B=VOWELS[Math.min(4,vi+1)],gains=[2.4,1.5,.8];
   an.f.forEach((o,k)=>{o.f.frequency.setTargetAtTime(A[k]+(B[k]-A[k])*vf,now,.06);o.g.gain.setTargetAtTime(gains[k],now,.06);});
   // which chord: re-voice on every bar or beat (and whenever settings change)
-  const fol=getV('fx','anFollow'),sec=lenS?heardPos()/sr:0,unit=60/bpm*(fol==='beat'?2:4),idx=fol==='hold'?(an.holdIdx??(an.holdIdx=bpm?Math.floor((sec-offSec)/unit):0)):(bpm?Math.floor((sec-offSec)/unit):0);
-  const per=+getV('fx','anVoices')|0||1,key=idx+'|'+getV('fx','anHarm')+'|'+getV('fx','anOct')+'|'+getV('fx','anPitch')+'|'+getV('fx','acPat')+'|'+getV('fx','acKey');
-  let notes=an.notes;
-  if(key!==an.key||!notes){an.key=key;notes=an.notes=angelVoicing(bpm?offSec+idx*unit+.05:sec,an.notes);}
-  if(an.shape!==notes.length+'x'+per){angelBuild(notes.length,per);an.spr=-1;}
-  an.voices.forEach(v=>{const f=440*Math.pow(2,(notes[v.j]-69)/12);if(Math.abs(v.o.frequency.value-f)>.5)v.o.frequency.setTargetAtTime(f,now,.12);});
+  const fol=getV('fx','anFollow'),unit=60/(bpm||120)*(fol==='bar'?4:fol==='fast'?1:2),gl=Math.max(.003,getV('fx','anGlide')/1000/3);
+  // where the song is right now (the audio engine's own clock, not the delayed "heard" position)
+  let rel,t0;if(lenS&&bpm){const [p,tc]=playing?schedBase():[posS,now];rel=p/sr-offSec;t0=tc;}else{rel=0;t0=now;}
+  const idxNow=fol==='hold'?(an.holdIdx??(an.holdIdx=Math.floor(rel/unit))):Math.floor(rel/unit);
+  const per=+getV('fx','anVoices')|0||1,cfgKey=getV('fx','anHarm')+'|'+getV('fx','anOct')+'|'+getV('fx','anPitch')+'|'+getV('fx','acPat')+'|'+getV('fx','acKey')+'|'+fol;
+  const voicingFor=i=>angelVoicing(offSec+i*unit+Math.min(.05,unit*.1),an.notes);
+  const apply=(nt,T)=>an.voices.forEach(v=>{const f=440*Math.pow(2,(nt[v.j]-69)/12);v.o.frequency.cancelScheduledValues(T);v.o.frequency.setTargetAtTime(f,T,gl);});
+  if(an.skip===idxNow){an.cur=idxNow;an.skip=null;}            // next chord was the same: nothing to do
+  if(cfgKey!==an.cfg||an.cur!==idxNow&&!(an.pend&&an.pend.idx===idxNow)||!an.notes){ // catch up now (start, seek, settings change)
+    an.cfg=cfgKey;an.cur=idxNow;an.pend=null;an.notes=voicingFor(idxNow);
+    if(an.shape!==an.notes.length+'x'+per){angelBuild(an.notes.length,per);an.spr=-1;}apply(an.notes,now);}
+  if(an.shape!==an.notes.length+'x'+per){angelBuild(an.notes.length,per);an.spr=-1;apply(an.notes,now);}
+  if(an.pend&&now>=an.pend.T-.002){an.notes=an.pend.notes;an.cur=an.pend.idx;an.pend=null;}  // the scheduled switch has happened
+  if(playing&&fol!=='hold'&&lenS&&bpm&&!an.pend&&an.skip==null){ // look ahead: line the next chord up to the exact moment of the change
+    const nxt=idxNow+1,Tn=t0+(nxt*unit-rel)/Math.max(.05,rateR);
+    if(Tn-now<.15&&Tn>now-.01){const nt=voicingFor(nxt);if(nt.join()!==an.notes.join()){apply(nt,Math.max(now,Tn));an.pend={idx:nxt,notes:nt,T:Math.max(now,Tn)};}else an.skip=nxt;}
+  }
   const spr=F.spread;if(Math.abs(spr-(an.spr??-1))>.005){an.spr=spr; // spread: tight little group -> huge, wide, airy choir
     an.voices.forEach(v=>{v.o.detune.setTargetAtTime(v.dn*(4+spr*64)+v.jit,now,.06);v.p.pan.setTargetAtTime(Math.max(-1,Math.min(1,v.dn*spr*1.9)),now,.06);});
     an.air.frequency.setTargetAtTime(1600+spr*3800,now,.08);an.airG.gain.setTargetAtTime(.1+spr*.25,now,.08);}
@@ -2450,7 +2462,7 @@ const MENUS={
   stut:[{k:'slide',l:'Slide',opts:[['Pitch','p'],['Filter','f'],['Both','b']]},{k:'range',l:'Range',opts:[3,5,7,12,24].map(v=>['±'+v,v])}],
   tape:[{k:'len',l:'Length',opts:[['½ beat',.5],['1 beat',1],['2 beats',2],['4 beats',4]]},{k:'spin',l:'Spin',opts:[['On',true],['Off',false]]}],
   viewer:[{k:'vfx',l:'Effects',opts:[['Both pads','both'],['Pad A only','xy'],['Pad B only','xy2'],['None (clean)','none']]},{k:'vfit',l:'View',opts:[['Fit whole frame','contain'],['Fill window','cover']]},{k:'vcrt',l:'Screen',opts:[['Clean','off'],['Old TV (subtle)','soft'],['Old TV (strong)','hard']]},{k:'vrot',l:'Rotate',opts:[['0°',0],['90° ↻',90],['180°',180],['270° ↻',270]]},{k:'vscope',l:'Scope',opts:[['Off','none'],['Pad A','xy'],['Pad B','xy2'],['Both pads','both']]},{k:'vgrid',l:'Grid',opts:[['On','on'],['Off','off']]}],
-  angelM:[{k:'anHarm',l:'Harmony',opts:[['Unison','u'],['Fifths','f'],['Triad','t'],['Seventh','s'],['Cluster','c'],['Melody + choir','m']]},{k:'anRev',l:'Reverb',opts:[['Chamber','chamber'],['Hall','hall'],['Cathedral','cath'],['Heaven','heaven'],['Shimmer','shimmer']]},{k:'anFollow',l:'Chords',opts:[['Every bar','bar'],['Half bar','beat'],['Hold','hold']]}],
+  angelM:[{k:'anHarm',l:'Harmony',opts:[['Unison','u'],['Fifths','f'],['Triad','t'],['Seventh','s'],['Cluster','c'],['Melody + choir','m']]},{k:'anRev',l:'Reverb',opts:[['Chamber','chamber'],['Hall','hall'],['Cathedral','cath'],['Heaven','heaven'],['Shimmer','shimmer']]},{k:'anFollow',l:'Chords',opts:[['Every beat','fast'],['Half bar','beat'],['Every bar','bar'],['Hold','hold']]}],
   aquaM:[{k:'aqNotes',l:'Notes',opts:[['Chords','c'],['Melody','m'],['Harmony','h']]},{k:'aqOct',l:'Range',opts:[['Low',-12],['Mid',0],['High',12]]}],
   acidM:[{k:'acPat',l:'Scale',opts:[['Song','song'],['Minor pent.','pent'],['Phrygian','phry'],['Blues','blues'],['Dorian','dorian'],['Root + 5th','octave']]},{k:'acWave',l:'Wave',opts:[['Saw','sawtooth'],['Square','square']]},{k:'acRate',l:'Steps',opts:[['1/8',.5],['1/16',.25],['1/32',.125]]}],
   pitch:[{k:'mode',l:'Mode',opts:[['Speed','s'],['Keep tempo','k'],['Keep pitch','t']]},{k:'glide',l:'Glide',opts:[0,60,120,250,500,800].map(v=>[v+'ms',v])}]
