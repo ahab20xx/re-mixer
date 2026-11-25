@@ -648,7 +648,7 @@ const fx={
   pitch:{on:false,latch:false,active:null},
   aquaM:{on:false,latch:false,hold:false,gx:.5,gy:.6},
   acidM:{on:false,latch:false,hold:false,gx:.6,gy:.35,mute:Array(16).fill(false),over:Array(16).fill(null),acc:false,sld:false},
-  angelM:{on:false,latch:false,hold:false,touches:new Map(),all:false,vowel:.5}
+  angelM:{on:false,latch:false,hold:false,touches:new Map(),all:false,vowel:.5,spread:.5,halo:null}
 };
 const send=(m,tr)=>{if(node)node.port.postMessage(m,tr||[]);};
 
@@ -1564,8 +1564,8 @@ function angelBuild(parts,per){
   an.voices=[];an.parts=[];
   for(let j=0;j<parts;j++){const pg=ctx.createGain();pg.gain.value=0;pg.connect(an.mix);an.parts.push({g:pg,on:false});
     for(let k=0;k<per;k++){const o=ctx.createOscillator(),g=ctx.createGain(),p=ctx.createStereoPanner();o.type='sawtooth';
-      o.detune.value=per>1?(k/(per-1)-.5)*26+(Math.random()-.5)*4:0;p.pan.value=per>1?(k/(per-1)-.5)*.9:0;g.gain.value=.55/Math.sqrt(per*parts);
-      an.lfoG.connect(o.detune);o.connect(g).connect(p).connect(pg);o.start();an.voices.push({o,j});}}
+      const dn=per>1?k/(per-1)-.5:0,jit=(Math.random()-.5)*4;o.detune.value=dn*26+jit;p.pan.value=dn*.9;g.gain.value=.55/Math.sqrt(per*parts);
+      an.lfoG.connect(o.detune);o.connect(g).connect(p).connect(pg);o.start();an.voices.push({o,p,j,dn,jit});}}
   an.shape=parts+'x'+per;
 }
 function angelTick(){
@@ -1587,8 +1587,11 @@ function angelTick(){
   const per=+getV('fx','anVoices')|0||1,key=idx+'|'+getV('fx','anHarm')+'|'+getV('fx','anOct')+'|'+getV('fx','anPitch')+'|'+getV('fx','acPat')+'|'+getV('fx','acKey');
   let notes=an.notes;
   if(key!==an.key||!notes){an.key=key;notes=an.notes=angelVoicing(bpm?offSec+idx*unit+.05:sec);}
-  if(an.shape!==notes.length+'x'+per)angelBuild(notes.length,per);
+  if(an.shape!==notes.length+'x'+per){angelBuild(notes.length,per);an.spr=-1;}
   an.voices.forEach(v=>{const f=440*Math.pow(2,(notes[v.j]-69)/12);if(Math.abs(v.o.frequency.value-f)>.5)v.o.frequency.setTargetAtTime(f,now,.12);});
+  const spr=F.spread;if(Math.abs(spr-(an.spr??-1))>.005){an.spr=spr; // spread: tight little group -> huge, wide, airy choir
+    an.voices.forEach(v=>{v.o.detune.setTargetAtTime(v.dn*(4+spr*64)+v.jit,now,.06);v.p.pan.setTargetAtTime(Math.max(-1,Math.min(1,v.dn*spr*1.9)),now,.06);});
+    an.air.frequency.setTargetAtTime(1600+spr*3800,now,.08);an.airG.gain.setTargetAtTime(.1+spr*.25,now,.08);}
   // which parts sing: the touched columns, or all of them (halo bar / lock)
   an.parts.forEach((p,j)=>{const on=F.all||F.latch||[...F.touches.values()].some(t=>t.part===j);if(on!==p.on){p.on=on;p.g.gain.cancelScheduledValues(now);p.g.gain.setTargetAtTime(on?1:0,now,on?.18:.7);}});
 }
@@ -2262,9 +2265,12 @@ const MODS={
     box.addEventListener('pointerdown',e=>{e.preventDefault();box.setPointerCapture(e.pointerId);const p=at(e);
       const now=performance.now(),dbl=now-lastT<320&&Math.hypot(e.clientX-lastX,e.clientY-lastY)<40;lastT=dbl?0:now;lastX=e.clientX;lastY=e.clientY;
       if(dbl){toggleLatch('angelM');upd();return;}
-      if(p.halo){F.all=true;F.haloId=e.pointerId;}else{F.touches.set(e.pointerId,p);F.vowel=1-(p.y-.16)/.84;}upd();});
-    box.addEventListener('pointermove',e=>{if(!F.touches.has(e.pointerId))return;const p=at(e);if(p.halo)p.part=F.touches.get(e.pointerId).part;F.touches.set(e.pointerId,p);F.vowel=Math.max(0,Math.min(1,1-(p.y-.16)/.84));});
-    const end=e=>{F.touches.delete(e.pointerId);if(F.haloId===e.pointerId){F.all=false;F.haloId=null;}upd();};
+      if(p.halo){F.all=true;F.haloId=e.pointerId;F.halo={x0:e.clientX,y0:e.clientY,v0:F.vowel,s0:F.spread};}else{F.touches.set(e.pointerId,p);F.vowel=1-(p.y-.16)/.84;}upd();});
+    box.addEventListener('pointermove',e=>{
+      if(e.pointerId===F.haloId&&F.halo){const r=c.getBoundingClientRect(),h=F.halo; // halo: up/down sweeps the vowels, side to side spreads the choir
+        F.vowel=Math.max(0,Math.min(1,h.v0+(h.y0-e.clientY)/(r.height*.5)));F.spread=Math.max(0,Math.min(1,h.s0+(e.clientX-h.x0)/(r.width*.6)));return;}
+      if(!F.touches.has(e.pointerId))return;const p=at(e);if(p.halo)p.part=F.touches.get(e.pointerId).part;F.touches.set(e.pointerId,p);F.vowel=Math.max(0,Math.min(1,1-(p.y-.16)/.84));});
+    const end=e=>{F.touches.delete(e.pointerId);if(F.haloId===e.pointerId){F.all=false;F.haloId=null;F.halo=null;}upd();};
     box.addEventListener('pointerup',end);box.addEventListener('pointercancel',end);box.addEventListener('contextmenu',e=>e.preventDefault());
   }},
   gate:{name:'GATER',ic:'#00e0e0',c:'#38bdf8',latch:'gate',build(mb){
@@ -2320,8 +2326,8 @@ function drawAngelMod(){
     if(on&&Math.random()<.12)angelSpk.push({x:cx/W+(Math.random()-.5)*.06,y:.88,v:.35+Math.random()*.35,life:1,c:j});}
   // halo bar: hold for the full choir
   const ha=F.all||F.latch;g.save();g.strokeStyle=ha?'#fff6c0':'rgba(255,230,150,.8)';g.lineWidth=(ha?4:2)*d;if(ha){g.shadowColor='#ffd860';g.shadowBlur=18*d;}
-  g.beginPath();g.ellipse(W/2,top*.55,W*.38,top*.28,0,0,6.283);g.stroke();g.restore();
-  g.font=`700 ${Math.round(10*d)}px ${canvasFont}`;g.textAlign='center';g.fillStyle=ha?'#4a2a00':'rgba(80,50,0,.75)';g.fillText(F.latch?'CHOIR HELD (double-tap to release)':'HOLD HALO = FULL CHOIR',W/2,top*.55+4*d);
+  g.beginPath();g.ellipse(W/2,top*.55,W*(.24+.22*F.spread),top*.28,0,0,6.283);g.stroke();g.restore();
+  g.font=`700 ${Math.round(10*d)}px ${canvasFont}`;g.textAlign='center';g.fillStyle=ha?'#4a2a00':'rgba(80,50,0,.75)';g.fillText(F.halo?`${VOWEL_NAMES[Math.min(4,Math.round(F.vowel*4))]} · SPREAD ${Math.round(F.spread*100)}%  (up/down vowel, left/right spread)`:F.latch?'CHOIR HELD (double-tap to release)':'HOLD HALO = FULL CHOIR  ·  up/down vowel, left/right spread',W/2,top*.55+4*d);
   // sparkles
   g.save();g.globalCompositeOperation='lighter';
   const sdt=Math.min(.05,(performance.now()-(drawAngelMod.at||performance.now()))/1000);drawAngelMod.at=performance.now();
