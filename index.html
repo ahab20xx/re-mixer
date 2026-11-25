@@ -1842,9 +1842,13 @@ function drawScene(g,W,H,d,a,key){
     // sludge ripples: slow, thick rings spreading through goo, born on the acid steps
     const rate=aca*getV('fx','acBub')/100;
     const step=lenS&&bpm?Math.floor((heardPos()/sr-offSec)/(60/bpm*getV('fx','acRate'))):Math.floor(t*4);
-    if(step!==S.lastStep){S.lastStep=step;if(Math.random()<rate*(.25+acidEnv*.6))S.tb.push({x:.1+Math.random()*.8,y:.25+Math.random()*.7,age:0,life:2.2+Math.random()*1.6,sz:.18+Math.random()*.22});}
+    if(step!==S.lastStep){S.lastStep=step;if(Math.random()<rate*(.25+acidEnv*.6)){ // a ripple from the middle, often throwing a drop up
+      S.tb.push({x:.5,y:.5,age:0,life:2.4+Math.random()*1.4,sz:.3+Math.random()*.25});
+      if(Math.random()<.65&&(!S.drops||S.drops.length<3))(S.drops||(S.drops=[])).push({h:0,v:.75+Math.random()*.5,sz:.012+Math.random()*.01});}}
+    // drops: fly up out of the centre, fall back in, and make their own smaller ripple + splash
+    if(S.drops&&S.drops.length){for(const p of S.drops){p.v-=3.4*dt;p.h+=p.v*dt;if(p.h<=0&&p.v<0){p.dead=1;S.tb.push({x:.5,y:.5,age:0,life:1.6,sz:.14+Math.random()*.08,small:1});}}S.drops=S.drops.filter(p=>!p.dead);}
     if(S.tb.length>8)S.tb.splice(0,S.tb.length-8);
-    if(S.tb.length){
+    if(S.tb.length||(S.drops&&S.drops.length)){
       // refraction: the picture is magnified a little inside each ring band, like looking through a ripple
       let C=S.snap;if(!C||C.width!==W||C.height!==H){C=S.snap=document.createElement('canvas');C.width=W;C.height=H;}
       const cg=C.getContext('2d');cg.clearRect(0,0,W,H);cg.drawImage(g.canvas,0,0);
@@ -1859,8 +1863,14 @@ function drawScene(g,W,H,d,a,key){
           c.globalAlpha=Math.max(0,fade*(1-j*.25));pRing(c,cx,cy,R,'#1f5a00');pRing(c,cx,cy,R-1,col);
           if(j===0){c.fillStyle='#f4ffc0';for(let a=-2.6;a<-1.2;a+=.35)c.fillRect(Math.round(cx+Math.cos(a)*(R-1)),Math.round(cy+Math.sin(a)*(R-1)),1,1);}}
         // the splash: a gloop that sinks back down in the middle
-        if(k<.35){const q=1-k/.35,rr=Math.max(1,q*r.sz*lm*.18);c.globalAlpha=q;pDisc(c,cx,cy,rr+1,'#2b7a00');pDisc(c,cx,cy,rr,'#7cff1a');c.fillStyle='#d8ff8a';c.fillRect(Math.round(cx-rr*.4),Math.round(cy-rr*.4),1,1);}
+        if(k<.35){const q=1-k/.35,rr=Math.max(1,q*r.sz*lm*(r.small?.3:.18));c.globalAlpha=q;pDisc(c,cx,cy,rr+1,'#2b7a00');pDisc(c,cx,cy,rr,'#7cff1a');c.fillStyle='#d8ff8a';c.fillRect(Math.round(cx-rr*.4),Math.round(cy-rr*.4),1,1);}
         c.globalAlpha=1;}
+      // the drops themselves: stretched while moving fast, with a shadow on the goo that shrinks as they rise
+      if(S.drops)for(const p of S.drops){const cx=lw/2,cy=lh/2,hh=p.h*lm,rr=Math.max(1,p.sz*lm),st=Math.min(2.2,1+Math.abs(p.v)*.9);
+        const sh=Math.max(1,rr*(1.4-Math.min(1,p.h*6)*.8));c.globalAlpha=.55;c.fillStyle='#143800';c.fillRect(Math.round(cx-sh),Math.round(cy),Math.round(sh*2),Math.max(1,Math.round(sh*.5)));c.globalAlpha=1;
+        const x=Math.round(cx),y=Math.round(cy-hh),hgt=Math.round(rr*st);
+        for(let dy=-hgt;dy<=hgt;dy++){const w=Math.max(0,Math.round(rr*Math.sqrt(1-(dy/(hgt+.5))**2)));c.fillStyle='#1f5a00';c.fillRect(x-w-1,y+dy,w*2+3,1);c.fillStyle=dy<-hgt*.3?'#9cff2a':'#7cff1a';c.fillRect(x-w,y+dy,w*2+1,1);}
+        c.fillStyle='#f4ffc0';c.fillRect(x-Math.max(1,Math.round(rr*.4)),y-Math.round(hgt*.5),1,Math.max(1,Math.round(hgt*.4)));}
       S.tb=S.tb.filter(r=>r.age<r.life);
     }
   }else{S.tb.length=0;S.pops.length=0;}
