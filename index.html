@@ -450,7 +450,7 @@ class Remixer extends AudioWorkletProcessor{
     const N=this.PSN;let p=this.psWi-d;if(p<0)p+=N;
     const i0=Math.floor(p),fr=p-i0;return buf[i0&(N-1)]*(1-fr)+buf[(i0+1)&(N-1)]*fr;
   }
-  report(force){if(this.playing||force)this.port.postMessage({t:'pos',p:this.ghost,q:this.pos,r:this.playing?this.rate*this.dir*(this.st?this.spC:1)*(this.psMode==='s'?this.psR:1):0});}
+  report(force){if(this.playing||force)this.port.postMessage({t:'pos',p:this.ghost,q:this.pos,r:this.playing?this.rate*this.dir*(this.st?this.spC:1)*(this.psMode!=='k'?this.psR:1):0});}
   process(_,outs){
     const o=outs[0],oL=o[0],oR=o[1]||o[0],N=oL.length;
     const L=this.L,R=this.R,n=this.n,X=this.xp;
@@ -545,9 +545,9 @@ class Remixer extends AudioWorkletProcessor{
       this.psR+=(this.psT-this.psR)*this.psK;
       {
         const N=this.PSN;this.psBL[this.psWi]=l;this.psBR[this.psWi]=r;
-        this.psMix+=(((this.psOn&&this.psMode==='k')?1:0)-this.psMix)*this.kMix;
+        this.psMix+=(((this.psOn&&this.psMode!=='s')||(this.psMode==='t'&&Math.abs(this.psR-1)>1e-3)?1:0)-this.psMix)*this.kMix;
         if(this.psMix>1e-4){
-          const W=this.psW,rr=this.psMode==='k'?this.psR:1;
+          const W=this.psW,rr=this.psMode==='k'?this.psR:this.psMode==='t'?1/this.psR:1; // 't': undo the pitch change the speed-up caused
           this.psPh-=(rr-1);while(this.psPh<0)this.psPh+=W;while(this.psPh>=W)this.psPh-=W;
           const d1=this.psPh,d2=(this.psPh+W/2)%W;
           let g1=Math.sin(Math.PI*d1/W);g1*=g1;const g2=1-g1;
@@ -559,7 +559,7 @@ class Remixer extends AudioWorkletProcessor{
       }
       const s=this.st;
       if(s)this.spC+=(this.sp-this.spC)*this.kSp;
-      this.pos+=this.rate*this.dir*(s?this.spC:1)*(this.psMode==='s'?this.psR:1);this.ghost+=1;if(this.pos<0)this.pos=0;
+      this.pos+=this.rate*this.dir*(s?this.spC:1)*(this.psMode!=='k'?this.psR:1);this.ghost+=1;if(this.pos<0)this.pos=0;
       if(this.psSync&&Math.abs(this.psR-1)<1e-3&&(this.psMode==='k'||!this.psOn)){
         this.psSync=false;
         if(!s&&this.dir===1&&this.tape===0&&Math.abs(this.pos-this.ghost)>2)this.jump(this.ghost);
@@ -1086,7 +1086,7 @@ const SPEC={
   ],
   pitch:[
     {h:'PITCH',c:'#9b6bff'},
-    {k:'mode',l:'Mode',chips:[['Speed','s'],['Keep tempo','k']],v:'s'},
+    {k:'mode',l:'Mode',chips:[['Speed','s'],['Keep tempo','k'],['Keep pitch','t']],v:'s'},
     {k:'glide',l:'Glide',min:0,max:800,v:120,f:v=>v+'ms'}
   ],
   tape:[
@@ -1137,7 +1137,7 @@ const FXSPEC={
     {k:'smHold',l:'Hold',min:0,max:100,v:80,f:pct},
     {k:'smMosh',l:'Datamosh',min:0,max:100,v:100,f:pct}],
   pitch:[{h:'PITCH'},
-    {k:'pMode',l:'Mode',chips:[['Speed','s'],['Keep tempo','k']],v:'k'},
+    {k:'pMode',l:'Mode',chips:[['Speed','s'],['Keep tempo','k'],['Keep pitch','t']],v:'k'},
     {k:'pRange',l:'Range',min:1,max:24,v:12,f:v=>v+' st'},
     {k:'pSnap',l:'Snap notes',toggle:1,v:true}]
 };
@@ -1302,6 +1302,10 @@ function stutSlide(v,padEl){
 }
 const PITCHES=[-12,-7,-5,-3,3,5,7,12];
 let lastPMode='s';
+function pitchLabels(){ // Keep pitch mode: pads show speed (×1.5) instead of semitones
+  const sp=getV('pitch','mode')==='t';
+  (UI.pitchPads||[]).forEach(p=>{const st=+p.dataset.st,lab=sp?'×'+(+Math.pow(2,st/12).toFixed(2)):(st>0?'+':'−')+Math.abs(st);if(p.textContent!==lab)p.textContent=lab;});
+}
 function sendPitch(){
   const P=fx.pitch,mod=P.active!=null;P.on=mod;
   let m;
@@ -1312,7 +1316,7 @@ function sendPitch(){
   }else m={on:false,ratio:1,mode:lastPMode,glide:60};
   lastPMode=m.mode;
   send({t:'pitch',...m});
-  (UI.pitchPads||[]).forEach(p=>p.classList.toggle('on',+p.dataset.st===P.active));
+  (UI.pitchPads||[]).forEach(p=>p.classList.toggle('on',+p.dataset.st===P.active));pitchLabels();
   refreshCards();
 }
 function setPitch(st){fx.pitch.active=st;sendPitch();}
@@ -1624,7 +1628,7 @@ const MODS={
     });}},
   pitch:{name:'PITCH',ic:'#8000ff',c:'#9b6bff',latch:'pitch',build(mb){
     mb.innerHTML='<div class="ppads">'+PITCHES.map(st=>`<div class="pad" data-st="${st}">${st>0?'+':'−'}${Math.abs(st)}</div>`).join('')+'</div>';
-    UI.pitchPads=[...mb.querySelectorAll('.pad')];
+    UI.pitchPads=[...mb.querySelectorAll('.pad')];pitchLabels();
     UI.pitchPads.forEach(p=>{
       let pid=null;
       p.addEventListener('pointerdown',e=>{
@@ -1663,7 +1667,7 @@ const MENUS={
   stut:[{k:'slide',l:'Slide',opts:[['Pitch','p'],['Filter','f'],['Both','b']]},{k:'range',l:'Range',opts:[3,5,7,12,24].map(v=>['±'+v,v])}],
   tape:[{k:'len',l:'Length',opts:[['½ beat',.5],['1 beat',1],['2 beats',2],['4 beats',4]]},{k:'spin',l:'Spin',opts:[['On',true],['Off',false]]}],
   viewer:[{k:'vfx',l:'Effects',opts:[['Both pads','both'],['Pad A only','xy'],['Pad B only','xy2'],['None (clean)','none']]},{k:'vfit',l:'View',opts:[['Fit whole frame','contain'],['Fill window','cover']]},{k:'vcrt',l:'Screen',opts:[['Clean','off'],['Old TV (subtle)','soft'],['Old TV (strong)','hard']]},{k:'vrot',l:'Rotate',opts:[['0°',0],['90° ↻',90],['180°',180],['270° ↻',270]]}],
-  pitch:[{k:'mode',l:'Mode',opts:[['Speed','s'],['Keep tempo','k']]},{k:'glide',l:'Glide',opts:[0,60,120,250,500,800].map(v=>[v+'ms',v])}]
+  pitch:[{k:'mode',l:'Mode',opts:[['Speed','s'],['Keep tempo','k'],['Keep pitch','t']]},{k:'glide',l:'Glide',opts:[0,60,120,250,500,800].map(v=>[v+'ms',v])}]
 };
 const mpop=document.createElement('div');mpop.id='mpop';document.body.appendChild(mpop);
 let mpopBtn=null;
