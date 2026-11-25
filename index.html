@@ -2855,7 +2855,8 @@ function chaosFrame(){
   const tpOf=e=>{const r=c.getBoundingClientRect();return [(e.clientX-r.left)/r.width,(e.clientY-r.top)/r.height];};
   c.addEventListener('pointerdown',e=>{e.preventDefault();c.setPointerCapture(e.pointerId);CH.drag=e.pointerId;CH.tp=tpOf(e);lx=e.clientX;ly=e.clientY;lt=performance.now();c.style.cursor='grabbing';});
   c.addEventListener('pointermove',e=>{if(CH.drag!==e.pointerId)return;CH.tp=tpOf(e);const now=performance.now(),dt=Math.max(8,now-lt),dx=e.clientX-lx,dy=e.clientY-ly;lx=e.clientX;ly=e.clientY;lt=now;
-    CH.yaw+=dx*.012;CH.pitch=Math.max(-1.4,Math.min(1.4,CH.pitch+dy*.01));CH.vy=CH.vy*.5+dx*.012*16/dt*.5;CH.vp=CH.vp*.5+dy*.01*16/dt*.5;});
+    // drag up, tilt up: the screen's y grows downward, so the tilt takes the opposite sign
+    CH.yaw+=dx*.012;CH.pitch=Math.max(-1.4,Math.min(1.4,CH.pitch-dy*.01));CH.vy=CH.vy*.5+dx*.012*16/dt*.5;CH.vp=CH.vp*.5-dy*.01*16/dt*.5;});
   const up=e=>{if(CH.drag===e.pointerId){CH.drag=null;c.style.cursor='';}};c.addEventListener('pointerup',up);c.addEventListener('pointercancel',up);
   c.addEventListener('dblclick',()=>{CH.yaw+=Math.random()*8;CH.pitch=(Math.random()-.5)*2.4;CH.vy=(Math.random()<.5?-1:1)*(.15+Math.random()*.2);});
   $('#chScr').addEventListener('click',()=>{CH.yaw+=2+Math.random()*8;CH.pitch=(Math.random()-.5)*2.4;CH.vy=(Math.random()<.5?-1:1)*(.15+Math.random()*.25);});
