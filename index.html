@@ -974,6 +974,10 @@ function snapF(f){
 }
 const minTrim=()=>lenS?Math.max(.25*sr,getV('wave','snap')?60/bpm*sr:0)/lenS:.01;
 const sFrac=e=>vS+xFrac(e)*(vE-vS);
+function nearPlayhead(e){ // is the pointer on the playhead line?
+  if(!lenS)return false;const r=wave.getBoundingClientRect(),x=(heardPos()/lenS-vS)/(vE-vS)*r.width;
+  return Math.abs(e.clientX-r.left-x)<(e.pointerType==='mouse'?7:20);
+}
 function hitHandle(e){ // which trim handle is under the pointer ('a','b' or null)
   if(!selOn||!lenS)return null;
   const r=wave.getBoundingClientRect(),x=e.clientX-r.left,toX=f=>(f-vS)/(vE-vS)*r.width;
@@ -995,17 +999,19 @@ wave.addEventListener('pointerdown',e=>{
     if(wA0!=null){trimA=wA0;trimB=wB0;sendRegion();}
     return;
   }
-  const f=sFrac(e),hh=hitHandle(e);
-  // a normal drag scrubs; press and hold inside a trimmed selection, then drag, to slide the whole selection
-  wMode=hh||'seek';
+  const f=sFrac(e),hh=hitHandle(e),inSel=!hh&&selOn&&(trimA>0||trimB<1)&&f>trimA&&f<trimB&&!nearPlayhead(e);
+  // grabbing the playhead (or anywhere outside a trimmed selection) scrubs.
+  // inside a trimmed selection: mouse click-and-drag slides it; on touch, press and hold first, then drag
+  wMode=hh||(inSel&&e.pointerType==='mouse'?'body?':'seek');
   wX0=f;wLastF=f;wA0=trimA;wB0=trimB;wMoved=false;if(wMode==='seek')dragX=f;
   clearTimeout(wHoldT);
-  if(!hh&&selOn&&(trimA>0||trimB<1)&&f>trimA&&f<trimB)wHoldT=setTimeout(()=>{
+  if(inSel&&e.pointerType!=='mouse')wHoldT=setTimeout(()=>{
     if(wMode==='seek'&&!wMoved){wMode='body';wX0=wLastF;wA0=trimA;wB0=trimB;dragX=null;wave.style.cursor='grabbing';try{navigator.vibrate&&navigator.vibrate(15);}catch(_){}}
   },350);
 });
 wave.addEventListener('pointermove',e=>{
-  if(!wMode){if(e.pointerType==='mouse'){wHover=hitHandle(e);wave.style.cursor=wHover?'ew-resize':'';}return;}
+  if(!wMode){if(e.pointerType==='mouse'){wHover=hitHandle(e);const f=sFrac(e);
+    wave.style.cursor=wHover||nearPlayhead(e)?'ew-resize':(selOn&&(trimA>0||trimB<1)&&f>trimA&&f<trimB)?'grab':'';}return;}
   if(wPtrs.has(e.pointerId))wPtrs.set(e.pointerId,e.clientX);
   if(wMode==='pinch'){
     if(wPtrs.size<2)return;
@@ -1014,6 +1020,7 @@ wave.addEventListener('pointermove',e=>{
     setView(pinch.f0-rel*sp,pinch.f0-rel*sp+sp,true);return;
   }
   const f=sFrac(e);wLastF=f;if(Math.abs(f-wX0)/(vE-vS)*wave.clientWidth>5){if(!wMoved&&wMode==='seek')clearTimeout(wHoldT);wMoved=true;}
+  if(wMode==='body?'&&wMoved){wMode='body';wave.style.cursor='grabbing';}
   const mt=minTrim();
   if(wMode==='a'){trimA=Math.max(0,Math.min(trimB-mt,snapF(f)));sendRegion();}
   else if(wMode==='b'){trimB=Math.min(1,Math.max(trimA+mt,snapF(f)));sendRegion();}
@@ -1031,7 +1038,7 @@ const endDrag=e=>{
   if(wMode==='pinch'){if(wPtrs.size===0){wMode=null;pinch=null;}return;}
   const f=sFrac(e);
   clearTimeout(wHoldT);if(wMode==='body')wave.style.cursor='';
-  if(wMode==='seek'||(wMode==='body'&&!wMoved)){ // a long still press counts as a tap
+  if(wMode==='seek'||wMode==='body?'||(wMode==='body'&&!wMoved)){ // a long still press counts as a tap
     const p=Math.max(effA(),Math.min(effB()-.0005,f))*lenS;send({t:'seek',p});posS=p;posAt=performance.now();
   }
   wMode=null;dragX=null;
@@ -2350,7 +2357,8 @@ function rotSrc(src,key){ // returns the frame turned by the viewer's Rotate set
 function renderVideoTo(cv,d,key,opt){
   const W=cv.width,H=cv.height,g=cv.getContext('2d');
   g.fillStyle='#000';g.fillRect(0,0,W,H);
-  if(!vHi)return;
+  if(!vHi){ // music only: the oscilloscope fills the viewer
+    if(!lenS)return;const m=getV('viewer','vscope');scopeOver(cv,m&&m!=='none'?m:'both');drawScene(g,W,H,d,viewerAmts(),key+'n');return;}
   const a=viewerAmts(),crt=getV('viewer','vcrt'),src=rotSrc(vHi,key);
   if(crt==='off'){drawVideoFx(g,W,H,d,key,a,{src,dim:false,...opt});return;}
   let b=padBuf[key];if(!b||b.width!==W||b.height!==H){b=padBuf[key]=document.createElement('canvas');b.width=W;b.height=H;}
@@ -2360,17 +2368,17 @@ function renderVideoTo(cv,d,key,opt){
   crtBegin(g,W,H,d);crtWarp(b,g,W,H,d,k,key);crtEnd(g,W,H,d,k,sa);
 }
 function drawViewer(){
-  if(vidRec&&recCanvas){renderVideoTo(recCanvas,1,'recv',{contain:true});scopeOver(recCanvas);}
+  if(vidRec&&recCanvas){renderVideoTo(recCanvas,1,'recv',{contain:true});if(vHi)scopeOver(recCanvas);}
   if(!vcan.offsetParent)return;
   fitCanvas(vcan);const d=devicePixelRatio||1;
-  $('#vMsg').style.display=vHi?'none':'';
+  $('#vMsg').style.display=vHi||lenS?'none':'';
   $('#vTitle').textContent=vHi?'Video viewer - '+$('#song').textContent:'Video viewer';
   renderVideoTo(vcan,d,'viewer',{contain:getV('viewer','vfit')==='contain',pan:vPan,over:vOver});
-  scopeOver(vcan);
+  if(vHi)scopeOver(vcan);
 }
 // lay the pads' oscilloscope traces (in their own colours, with their glow) over the viewer
-function scopeOver(cv){
-  const m=getV('viewer','vscope');if(!m||m==='none')return;
+function scopeOver(cv,force){
+  const m=force||getV('viewer','vscope');if(!m||m==='none')return;
   const g=cv.getContext('2d');g.save();g.globalCompositeOperation='lighter';
   for(const id of m==='both'?['xy','xy2']:[m]){const L=scopeL[id];if(L&&L.width)g.drawImage(L,0,0,cv.width,cv.height);}
   g.restore();
