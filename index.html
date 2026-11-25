@@ -1887,20 +1887,47 @@ function crtBegin(out,W,H,d){
   out.fillStyle='#050505';out.fillRect(0,0,W,H);
   out.save();out.beginPath();if(out.roundRect)out.roundRect(0,0,W,H,Math.min(12*d,H/4));else out.rect(0,0,W,H);out.clip();
 }
+// curved glass over a screen: frost, edge haze, soft window reflection, top bevel and a soft highlight.
+// built once per size/curve and reused every frame
+const glassCache=new Map();
+function glassLayer(W,H,d,k){
+  const key=W+'x'+H+'x'+k.toFixed(3);let c=glassCache.get(key);if(c)return c;
+  if(glassCache.size>8)glassCache.clear();
+  c=document.createElement('canvas');c.width=W;c.height=H;const g=c.getContext('2d'),M=Math.min(W,H),sv=Math.min(1,.5+k*6);
+  // 1. frosted haze, thicker toward the edges of the glass
+  const hz=g.createRadialGradient(W/2,H/2,M*.25,W/2,H/2,Math.hypot(W,H)*.55);
+  hz.addColorStop(0,'rgba(255,255,255,0)');hz.addColorStop(1,`rgba(220,235,255,${(.07*sv).toFixed(3)})`);g.fillStyle=hz;g.fillRect(0,0,W,H);
+  // 2. fine frost grain
+  { const n=document.createElement('canvas'),nw=Math.ceil(W/2),nh=Math.ceil(H/2);n.width=nw;n.height=nh;const ng=n.getContext('2d'),im=ng.createImageData(nw,nh);
+    for(let i=0;i<im.data.length;i+=4){const v=Math.random();im.data[i]=im.data[i+1]=im.data[i+2]=255;im.data[i+3]=v>.5?Math.round((v-.5)*2*19*sv):0;}
+    ng.putImageData(im,0,0);g.save();g.filter=`blur(${(.6*d).toFixed(1)}px)`;g.imageSmoothingEnabled=true;g.drawImage(n,0,0,W,H);g.restore(); }
+  // 3. broad soft sheen across the upper glass
+  g.save();g.filter=`blur(${Math.round(M*.04)}px)`;
+  const sh=g.createLinearGradient(0,0,0,H*.45);sh.addColorStop(0,`rgba(255,255,255,${(.13*sv).toFixed(3)})`);sh.addColorStop(1,'rgba(255,255,255,0)');
+  g.fillStyle=sh;g.beginPath();g.ellipse(W*.5,-H*.12,W*.62,H*.46,0,0,Math.PI*2);g.fill();g.restore();
+  // 4. reflection of a window: soft panes with dividers, upper left
+  { const wx=W*.09,wy=H*.07,ww=W*.3,wh=H*.24;
+    const L=document.createElement('canvas');L.width=W;L.height=H;const lg=L.getContext('2d');
+    const wg=lg.createLinearGradient(wx,wy,wx+ww,wy+wh);wg.addColorStop(0,`rgba(255,255,255,${(.16*sv).toFixed(3)})`);wg.addColorStop(1,`rgba(255,255,255,${(.03*sv).toFixed(3)})`);
+    lg.fillStyle=wg;lg.beginPath();lg.roundRect?lg.roundRect(wx,wy,ww,wh,M*.02):lg.rect(wx,wy,ww,wh);lg.fill();
+    lg.globalCompositeOperation='destination-out';lg.fillStyle='#000';
+    lg.fillRect(wx+ww*.48,wy,Math.max(2,ww*.04),wh);lg.fillRect(wx,wy+wh*.46,ww,Math.max(2,wh*.05)); // pane dividers
+    g.save();g.filter=`blur(${Math.max(2,Math.round(M*.012))}px)`;g.drawImage(L,0,0);g.restore(); }
+  // 5. bevel: bright line hugging the top inner edge, darker at the bottom
+  g.save();g.filter=`blur(${Math.max(1,Math.round(1.5*d))}px)`;g.lineWidth=Math.max(1.5,2*d);
+  g.strokeStyle=`rgba(255,255,255,${(.22*sv).toFixed(3)})`;g.beginPath();g.ellipse(W/2,H*.5,W*.485,H*.48,0,Math.PI*1.12,Math.PI*1.88);g.stroke();
+  g.strokeStyle=`rgba(0,0,0,${(.25*sv).toFixed(3)})`;g.beginPath();g.ellipse(W/2,H*.5,W*.485,H*.48,0,Math.PI*.15,Math.PI*.85);g.stroke();g.restore();
+  // 6. small soft highlight
+  g.save();g.filter=`blur(${Math.max(2,Math.round(M*.012))}px)`;
+  const hx=W*.16,hy=H*.11,hr=M*.035,hg=g.createRadialGradient(hx,hy,0,hx,hy,hr);hg.addColorStop(0,`rgba(255,255,255,${(.5*sv).toFixed(3)})`);hg.addColorStop(1,'rgba(255,255,255,0)');
+  g.fillStyle=hg;g.beginPath();g.ellipse(hx,hy,hr*1.5,hr*.8,-.6,0,Math.PI*2);g.fill();g.restore();
+  glassCache.set(key,c);return c;
+}
 function crtEnd(out,W,H,d,k,sa){
   if(sa>0){out.fillStyle=`rgba(0,0,0,${.4*sa})`;const sp=Math.max(2,Math.round(3*d)),sh=Math.max(1,Math.round(d));for(let y=0;y<H;y+=sp)out.fillRect(0,y,W,sh);}
   const vg=out.createRadialGradient(W/2,H/2,Math.min(W,H)*.3,W/2,H/2,Math.max(W,H)*.75);
   vg.addColorStop(0,'rgba(0,0,0,0)');vg.addColorStop(1,`rgba(0,0,0,${.25+k*2})`);out.fillStyle=vg;out.fillRect(0,0,W,H);
-  const gl=out.createRadialGradient(W*.28,H*.18,0,W*.28,H*.18,Math.max(W,H)*.55);
-  gl.addColorStop(0,'rgba(255,255,255,.09)');gl.addColorStop(.5,'rgba(255,255,255,.02)');gl.addColorStop(1,'rgba(255,255,255,0)');out.fillStyle=gl;out.fillRect(0,0,W,H);
-  // glass bubble: a curved sheen across the top and a small bright glint, stronger on more curved screens
-  const sv=Math.min(1,.45+k*6),M=Math.min(W,H);
-  out.save();out.beginPath();out.ellipse(W*.46,H*.08,W*.5,H*.2,-.06,0,Math.PI*2);out.clip();
-  const sh=out.createLinearGradient(0,0,0,H*.28);sh.addColorStop(0,`rgba(255,255,255,${(.2*sv).toFixed(3)})`);sh.addColorStop(.6,`rgba(255,255,255,${(.05*sv).toFixed(3)})`);sh.addColorStop(1,'rgba(255,255,255,0)');
-  out.fillStyle=sh;out.fillRect(0,0,W,H*.3);out.restore();
-  const gx=W*.13,gy=H*.12,gg=out.createRadialGradient(gx,gy,0,gx,gy,M*.07);gg.addColorStop(0,`rgba(255,255,255,${(.45*sv).toFixed(3)})`);gg.addColorStop(1,'rgba(255,255,255,0)');
-  out.fillStyle=gg;out.beginPath();out.ellipse(gx,gy,M*.07,M*.045,-.5,0,Math.PI*2);out.fill();
-  out.strokeStyle=`rgba(255,255,255,${(.12*sv).toFixed(3)})`;out.lineWidth=Math.max(1,2*d);out.beginPath();out.ellipse(W/2,H/2,W*.47,H*.46,0,Math.PI*1.08,Math.PI*1.42);out.stroke(); // rim highlight
+  out.drawImage(glassLayer(W,H,d,k),0,0);
   out.restore();
 }
 function drawPad(id){
