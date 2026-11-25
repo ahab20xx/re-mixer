@@ -1555,11 +1555,11 @@ function drawPad(id){
     g.fillStyle=col;g.textAlign=align;g.fillText(txt,x,y);
   };
   g.font=`700 ${Math.round(fs*.9)}px ${canvasFont}`;g.textBaseline='alphabetic';
-  plate((ax?FXNAME[ax]:'none').toUpperCase()+' →',W-8*d,H-8*d,'right',ax?fg:`rgba(${fgr},.55)`);
+  plate('X: '+(ax?FXNAME[ax]:'none').toUpperCase()+' →',W-8*d,H-8*d,'right',ax?fg:`rgba(${fgr},.55)`);
   g.save();g.translate(8*d+fs,8*d);g.rotate(-Math.PI/2);
-  plate((ay?FXNAME[ay]:'none').toUpperCase()+' →',0,0,'right',ay?fg:`rgba(${fgr},.55)`);g.restore();
+  plate('Y: '+(ay?FXNAME[ay]:'none').toUpperCase()+' →',0,0,'right',ay?fg:`rgba(${fgr},.55)`);g.restore();
   g.font=`700 ${Math.round(fs*1.15)}px ${canvasFont}`;
-  const rd=Math.round(dz(F.gx)*100)+'% · '+Math.round(dz(1-F.gy)*100)+'%';
+  const rd='X '+Math.round(dz(F.gx)*100)+'% · Y '+Math.round(dz(1-F.gy)*100)+'%';
   const _fs=fs;
   plate(rd,W-8*d,8*d+fs*1.15,'right',F.on?cur:`rgba(${fgr},.8)`);
   if(!crt){drawCross(out,W,H,d,F,cur);return;}
