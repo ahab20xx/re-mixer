@@ -299,7 +299,7 @@ body.editing #edbar{display:flex}
 
 <div id="viewer">
   <div class="tbar"><span class="ticon"><svg viewBox="0 0 16 16"><rect x="1.5" y="3" width="13" height="10" fill="#000" stroke="#fff" stroke-width="1"/><path d="M6.5 5.5v5l4-2.5z" fill="#33ff66"/></svg></span><span id="vTitle">Video viewer</span><span style="flex:1"></span><span class="tbtns"><i role="button" aria-label="Minimize">_</i><i role="button" aria-label="Maximize">□</i><i role="button" aria-label="Close">×</i></span></div>
-  <div class="mbar" data-id="viewer"><button class="mi" data-j="0"></button><button class="mi" data-j="1"></button><button class="mi" data-j="2"></button><button class="mi" data-j="3"></button></div>
+  <div class="mbar" data-id="viewer"><button class="mi" data-j="0"></button><button class="mi" data-j="1"></button><button class="mi" data-j="2"></button><button class="mi" data-j="3"></button><button class="mi" data-j="4"></button></div>
   <div id="vbox"><canvas id="vcan"></canvas><div id="vMsg">Load a video to see it here</div></div>
 </div>
 
@@ -1157,7 +1157,7 @@ const THEMES={
 };
 const SCREENDEF={view:'paper',...THEMES.paper,crt:true,curve:50,scan:50,video:true,trace:true};
 const SCREENS={
-  viewer:{vfx:'both',vfit:'contain',vcrt:'off',vrot:0},
+  viewer:{vfx:'both',vfit:'contain',vcrt:'off',vrot:0,vscope:'none'},
   wave:{snap:true,view:'green',cBg:'#000000',cFg:'#33ff66',cCur:'#ffff00',crt:false,curve:30,scan:40},
   tempo:{view:'green',cBg:'#000000',cFg:'#33ff66',cCur:'#33ff66',crt:false,curve:30,scan:40}
 };
@@ -1673,7 +1673,7 @@ const MENUS={
   pd:[{k:'pRate',l:'Rate',opts:[['1/8',.5],['1/4',1],['1/2',2]]},{k:'pDepth',l:'Depth',opts:[40,60,80,100].map(v=>[v+'%',v])},{k:'dLow',l:'Duck',opts:[['Light',120],['Med',220],['Heavy',380]]}],
   stut:[{k:'slide',l:'Slide',opts:[['Pitch','p'],['Filter','f'],['Both','b']]},{k:'range',l:'Range',opts:[3,5,7,12,24].map(v=>['±'+v,v])}],
   tape:[{k:'len',l:'Length',opts:[['½ beat',.5],['1 beat',1],['2 beats',2],['4 beats',4]]},{k:'spin',l:'Spin',opts:[['On',true],['Off',false]]}],
-  viewer:[{k:'vfx',l:'Effects',opts:[['Both pads','both'],['Pad A only','xy'],['Pad B only','xy2'],['None (clean)','none']]},{k:'vfit',l:'View',opts:[['Fit whole frame','contain'],['Fill window','cover']]},{k:'vcrt',l:'Screen',opts:[['Clean','off'],['Old TV (subtle)','soft'],['Old TV (strong)','hard']]},{k:'vrot',l:'Rotate',opts:[['0°',0],['90° ↻',90],['180°',180],['270° ↻',270]]}],
+  viewer:[{k:'vfx',l:'Effects',opts:[['Both pads','both'],['Pad A only','xy'],['Pad B only','xy2'],['None (clean)','none']]},{k:'vfit',l:'View',opts:[['Fit whole frame','contain'],['Fill window','cover']]},{k:'vcrt',l:'Screen',opts:[['Clean','off'],['Old TV (subtle)','soft'],['Old TV (strong)','hard']]},{k:'vrot',l:'Rotate',opts:[['0°',0],['90° ↻',90],['180°',180],['270° ↻',270]]},{k:'vscope',l:'Scope',opts:[['Off','none'],['Pad A','xy'],['Pad B','xy2'],['Both pads','both']]}],
   pitch:[{k:'mode',l:'Mode',opts:[['Speed','s'],['Keep tempo','k'],['Keep pitch','t']]},{k:'glide',l:'Glide',opts:[0,60,120,250,500,800].map(v=>[v+'ms',v])}]
 };
 const mpop=document.createElement('div');mpop.id='mpop';document.body.appendChild(mpop);
@@ -2096,12 +2096,20 @@ function renderVideoTo(cv,d,key,opt){
   crtBegin(g,W,H,d);crtWarp(b,g,W,H,d,k,key);crtEnd(g,W,H,d,k,sa);
 }
 function drawViewer(){
-  if(vidRec&&recCanvas)renderVideoTo(recCanvas,1,'recv',{contain:true});
+  if(vidRec&&recCanvas){renderVideoTo(recCanvas,1,'recv',{contain:true});scopeOver(recCanvas);}
   if(!vcan.offsetParent)return;
   fitCanvas(vcan);const d=devicePixelRatio||1;
   $('#vMsg').style.display=vHi?'none':'';
   $('#vTitle').textContent=vHi?'Video viewer - '+$('#song').textContent:'Video viewer';
   renderVideoTo(vcan,d,'viewer',{contain:getV('viewer','vfit')==='contain',pan:vPan,over:vOver});
+  scopeOver(vcan);
+}
+// lay the pads' oscilloscope traces (in their own colours, with their glow) over the viewer
+function scopeOver(cv){
+  const m=getV('viewer','vscope');if(!m||m==='none')return;
+  const g=cv.getContext('2d');g.save();g.globalCompositeOperation='lighter';
+  for(const id of m==='both'?['xy','xy2']:[m]){const L=scopeL[id];if(L&&L.width)g.drawImage(L,0,0,cv.width,cv.height);}
+  g.restore();
 }
 /* ---------- render loop ---------- */
 let lastBeat=-1;const dots=$$('#dots i');
