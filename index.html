@@ -1581,20 +1581,25 @@ function drawVideoFx(g,W,H,d,id,a=padAmts(id),opt={}){
 /* ---------- Aqua + Acid scenes (drawn over the video, or on the bare pad screen) ---------- */
 const scn={};
 const hash1=n=>{let h=Math.imul(n^0x9e3779b9,2654435761)>>>0;h^=h>>>15;return (h&65535)/65536;};
-let causC=null,causI=null;
-function caustics(t,cw,ch){ // "pool floor" light network, coloured with a slowly drifting palette
-  if(!causC||causC.width!==cw||causC.height!==ch){causC=document.createElement('canvas');causC.width=cw;causC.height=ch;causI=causC.getContext('2d').createImageData(cw,ch);}
-  const D=causI.data,TAU=6.2831853,PAL=[[60,255,255],[90,150,255],[200,110,255],[60,255,170],[255,230,120]];
+const causK={};
+// "pool floor" light network. mode 'aqua' = sharp thin coloured lines; 'acid' = thick oily, sickly veins
+function caustics(t,cw,ch,mode){
+  const K=causK[mode]||(causK[mode]={}),now=performance.now();
+  if(K.c&&K.c.width===cw&&K.c.height===ch&&now-K.at<30)return K.c; // shared by every screen drawn this frame
+  if(!K.c||K.c.width!==cw||K.c.height!==ch){K.c=document.createElement('canvas');K.c.width=cw;K.c.height=ch;K.i=K.c.getContext('2d').createImageData(cw,ch);}
+  K.at=now;const D=K.i.data,TAU=6.2831853,ac=mode==='acid';
+  const PAL=ac?[[210,225,40],[90,205,25],[220,150,25],[140,50,150],[150,190,60]]:[[60,255,255],[90,150,255],[200,110,255],[60,255,170],[255,230,120]];
+  const sc=ac?2.3:1.7,ex=ac?2.6:10,gain=ac?1.25:2.6,it=ac?3:4,inten=ac?.009:.005;
   for(let y=0;y<ch;y++)for(let x=0;x<cw;x++){
-    const px=(x/cw*1.6*cw/ch)*TAU-250,py=(y/ch*1.6)*TAU-250;let ix=px,iy=py,c=1;
-    for(let n=0;n<4;n++){const tt=t*(1-3.5/(n+1));const nx=px+Math.cos(tt-ix)+Math.sin(tt+iy),ny=py+Math.sin(tt-iy)+Math.cos(tt+ix);ix=nx;iy=ny;
-      c+=1/Math.hypot(px/(Math.sin(ix+tt)/.005),py/(Math.cos(iy+tt)/.005));}
-    c/=4;c=1.17-Math.pow(c,1.4);const v=Math.min(1,Math.pow(Math.abs(c),6)*1.5),w=v*v*v; // w = white-hot core
-    let h=(x/cw*.9+y/ch*.6+t*.07)%1*PAL.length;const i0=Math.floor(h),f=h-i0,p=PAL[i0%PAL.length],q=PAL[(i0+1)%PAL.length];
+    const px=(x/cw*sc*cw/ch)*TAU-250,py=(y/ch*sc)*TAU-250;let ix=px,iy=py,c=1;
+    for(let n=0;n<it;n++){const tt=t*(1-3.5/(n+1));const nx=px+Math.cos(tt-ix)+Math.sin(tt+iy),ny=py+Math.sin(tt-iy)+Math.cos(tt+ix);ix=nx;iy=ny;
+      c+=1/Math.hypot(px/(Math.sin(ix+tt)/inten),py/(Math.cos(iy+tt)/inten));}
+    c/=it;c=1.17-Math.pow(c,1.4);const v=Math.min(1,Math.pow(Math.abs(c),ex)*gain),w=ac?0:v*v*v;
+    const h=((x/cw*.9+y/ch*.6+t*.07)%1+1)%1*PAL.length,i0=Math.floor(h),f=h-i0,p=PAL[i0%PAL.length],q=PAL[(i0+1)%PAL.length];
     const o=(y*cw+x)*4;
-    D[o]=Math.min(255,v*(p[0]+(q[0]-p[0])*f)+w*120);D[o+1]=Math.min(255,v*(p[1]+(q[1]-p[1])*f)+w*120);D[o+2]=Math.min(255,v*(p[2]+(q[2]-p[2])*f)+w*120);D[o+3]=255;
+    D[o]=Math.min(255,v*(p[0]+(q[0]-p[0])*f)+w*140);D[o+1]=Math.min(255,v*(p[1]+(q[1]-p[1])*f)+w*140);D[o+2]=Math.min(255,v*(p[2]+(q[2]-p[2])*f)+w*140);D[o+3]=255;
   }
-  causC.getContext('2d').putImageData(causI,0,0);return causC;
+  K.c.getContext('2d').putImageData(K.i,0,0);return K.c;
 }
 // ---- 16-bit sprite helpers (draw on a low-res canvas, scaled up with hard pixels) ----
 function pDisc(c,x,y,r,col){c.fillStyle=col;x=Math.round(x);y=Math.round(y);r=Math.round(r);if(r<1){c.fillRect(x,y,1,1);return;}
@@ -1644,10 +1649,10 @@ function drawScene(g,W,H,d,a,key){
     g.globalCompositeOperation='source-over';g.fillStyle=`rgba(0,50,80,${(aqa*.22).toFixed(3)})`;g.fillRect(0,0,W,H);
     // caustics: strong and coloured (two passes: a soft glow, then the sharp network)
     const ca=aqa*getV('fx','aqCaus')/100;
-    if(ca>0){const cw=96,ch=Math.max(20,Math.min(96,Math.round(96*H/W)));const C=caustics(t*.6,cw,ch);
+    if(ca>0){const cw=180,ch=Math.max(40,Math.min(180,Math.round(180*H/W)));const C=caustics(t*.6,cw,ch,'aqua');
       g.globalCompositeOperation='lighter';g.imageSmoothingEnabled=true;
-      g.globalAlpha=Math.min(1,ca*.7);g.filter=`blur(${(6*d).toFixed(0)}px)`;g.drawImage(C,0,0,W,H);g.filter='none';
-      g.globalAlpha=Math.min(1,ca*1.25);g.drawImage(C,0,0,W,H);g.globalAlpha=1;}
+      g.globalAlpha=Math.min(1,ca*.35);g.filter=`blur(${(3*d).toFixed(0)}px)`;g.drawImage(C,0,0,W,H);g.filter='none'; // faint glow
+      g.globalAlpha=Math.min(1,ca*1.3);g.drawImage(C,0,0,W,H);g.globalAlpha=1;}                                         // crisp lines
     g.globalCompositeOperation='source-over';
     // seaweed: stacked pixel rows, outline + body + light stripe
     const nw=Math.round(getV('fx','aqWeed')/100*12);
@@ -1673,6 +1678,10 @@ function drawScene(g,W,H,d,a,key){
       const cols=['255,0,200','190,255,0','0,230,255','255,120,0'];
       for(let i=0;i<=8;i++){const p=(i/8+ph)%1;gr.addColorStop(p,`rgba(${cols[i%4]},1)`);}
       g.globalCompositeOperation='difference';g.globalAlpha=Math.min(.85,aca*.6*(1+.4*acidEnv));g.fillStyle=gr;g.fillRect(0,0,W,H);g.globalAlpha=1; }
+    // gross caustics: thick oily veins, slowly churning, pulsing on every acid step
+    { const cw=120,ch=Math.max(30,Math.min(120,Math.round(120*H/W)));const C=caustics(t*.38,cw,ch,'acid');
+      g.imageSmoothingEnabled=true;g.globalCompositeOperation='overlay';g.globalAlpha=Math.min(1,aca*.9);g.drawImage(C,0,0,W,H);
+      g.globalCompositeOperation='lighter';g.globalAlpha=Math.min(1,aca*(.45+.35*acidEnv));g.drawImage(C,0,0,W,H);g.globalAlpha=1; }
     // toxic tint, flashing on every acid step
     g.globalCompositeOperation='multiply';g.fillStyle=`rgba(170,255,90,${(aca*.55).toFixed(3)})`;g.fillRect(0,0,W,H);
     g.globalCompositeOperation='lighter';g.fillStyle=`rgba(110,255,20,${(aca*.22*acidEnv).toFixed(3)})`;g.fillRect(0,0,W,H);
