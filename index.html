@@ -1863,6 +1863,14 @@ function crtEnd(out,W,H,d,k,sa){
   vg.addColorStop(0,'rgba(0,0,0,0)');vg.addColorStop(1,`rgba(0,0,0,${.25+k*2})`);out.fillStyle=vg;out.fillRect(0,0,W,H);
   const gl=out.createRadialGradient(W*.28,H*.18,0,W*.28,H*.18,Math.max(W,H)*.55);
   gl.addColorStop(0,'rgba(255,255,255,.09)');gl.addColorStop(.5,'rgba(255,255,255,.02)');gl.addColorStop(1,'rgba(255,255,255,0)');out.fillStyle=gl;out.fillRect(0,0,W,H);
+  // glass bubble: a curved sheen across the top and a small bright glint, stronger on more curved screens
+  const sv=Math.min(1,.45+k*6),M=Math.min(W,H);
+  out.save();out.beginPath();out.ellipse(W*.46,H*.08,W*.5,H*.2,-.06,0,Math.PI*2);out.clip();
+  const sh=out.createLinearGradient(0,0,0,H*.28);sh.addColorStop(0,`rgba(255,255,255,${(.2*sv).toFixed(3)})`);sh.addColorStop(.6,`rgba(255,255,255,${(.05*sv).toFixed(3)})`);sh.addColorStop(1,'rgba(255,255,255,0)');
+  out.fillStyle=sh;out.fillRect(0,0,W,H*.3);out.restore();
+  const gx=W*.13,gy=H*.12,gg=out.createRadialGradient(gx,gy,0,gx,gy,M*.07);gg.addColorStop(0,`rgba(255,255,255,${(.45*sv).toFixed(3)})`);gg.addColorStop(1,'rgba(255,255,255,0)');
+  out.fillStyle=gg;out.beginPath();out.ellipse(gx,gy,M*.07,M*.045,-.5,0,Math.PI*2);out.fill();
+  out.strokeStyle=`rgba(255,255,255,${(.12*sv).toFixed(3)})`;out.lineWidth=Math.max(1,2*d);out.beginPath();out.ellipse(W/2,H/2,W*.47,H*.46,0,Math.PI*1.08,Math.PI*1.42);out.stroke(); // rim highlight
   out.restore();
 }
 function drawPad(id){
@@ -2421,24 +2429,24 @@ function rotSrc(src,key){ // returns the frame turned by the viewer's Rotate set
 function renderVideoTo(cv,d,key,opt){
   const W=cv.width,H=cv.height,g=cv.getContext('2d');
   g.fillStyle='#000';g.fillRect(0,0,W,H);
-  if(!vHi){ // music only: the oscilloscope fills the viewer
-    if(!lenS)return;const m=getV('viewer','vscope');scopeOver(cv,m&&m!=='none'?m:'both');drawScene(g,W,H,d,viewerAmts(),key+'n');return;}
-  const a=viewerAmts(),crt=getV('viewer','vcrt'),src=rotSrc(vHi,key);
-  if(crt==='off'){drawVideoFx(g,W,H,d,key,a,{src,dim:false,...opt});return;}
-  let b=padBuf[key];if(!b||b.width!==W||b.height!==H){b=padBuf[key]=document.createElement('canvas');b.width=W;b.height=H;}
-  const bg=b.getContext('2d');bg.fillStyle='#000';bg.fillRect(0,0,W,H);
-  drawVideoFx(bg,W,H,d,key,a,{src,dim:false,...opt});
+  if(!vHi&&!lenS)return;
+  const a=viewerAmts(),crt=getV('viewer','vcrt');
+  // picture first (video, or the scope for music only), then the screen effect over all of it
+  let b=cv,bg=g;
+  if(crt!=='off'){b=padBuf[key];if(!b||b.width!==W||b.height!==H){b=padBuf[key]=document.createElement('canvas');b.width=W;b.height=H;}bg=b.getContext('2d');bg.fillStyle='#000';bg.fillRect(0,0,W,H);}
+  if(vHi){drawVideoFx(bg,W,H,d,key,a,{src:rotSrc(vHi,key),dim:false,...opt});scopeOver(b);}
+  else{const m=getV('viewer','vscope');scopeOver(b,m&&m!=='none'?m:'both');drawScene(bg,W,H,d,a,key+'n');}
+  if(crt==='off')return;
   const k=crt==='hard'?.1:.05,sa=crt==='hard'?.7:.35;
   crtBegin(g,W,H,d);crtWarp(b,g,W,H,d,k,key);crtEnd(g,W,H,d,k,sa);
 }
 function drawViewer(){
-  if(vidRec&&recCanvas){renderVideoTo(recCanvas,1,'recv',{contain:true});if(vHi)scopeOver(recCanvas);}
+  if(vidRec&&recCanvas)renderVideoTo(recCanvas,1,'recv',{contain:true});
   if(!vcan.offsetParent)return;
   fitCanvas(vcan);const d=devicePixelRatio||1;
   $('#vMsg').style.display=vHi||lenS?'none':'';
   $('#vTitle').textContent=vHi?'Video viewer - '+$('#song').textContent:'Video viewer';
   renderVideoTo(vcan,d,'viewer',{contain:getV('viewer','vfit')==='contain',pan:vPan,over:vOver});
-  if(vHi)scopeOver(vcan);
 }
 // lay the pads' oscilloscope traces (in their own colours, with their glow) over the viewer
 function scopeOver(cv,force){
