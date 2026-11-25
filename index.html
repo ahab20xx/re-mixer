@@ -384,7 +384,7 @@ class Remixer extends AudioWorkletProcessor{
     this.gOn=false;this.gDepth=1;this.gStep=.5;this.gCur=1;
     this.pOn=false;this.pDepth=.8;this.pAmt=0;
     this.st=null;
-    this.tape=0;this.rate=1;this.r0=1;this.tLen=1;this.tT=0;this.tAmp=1;
+    this.tape=0;this.rate=1;this.r0=1;this.tLen=1;this.tT=0;this.tAmp=1;this.stDir='f';
     this.XF=Math.round(sr*.004);this.xf=0;this.xfPos=0;this.dir=1;this.xfDir=1;
     this.run=0;
     const k=t=>1-Math.exp(-1/(sr*t));
@@ -448,6 +448,8 @@ class Remixer extends AudioWorkletProcessor{
       case 'xy':this.glOn=m.on&&m.glitch>0;this.glAmt=m.glitch;this.wOn=m.on;this.wAmt=m.warble;break;
       case 'rev':this.reverse(m.on);break;
       case 'stut':this.stut(m.div);break;
+      case 'stdir':this.stDir=m.d;if(this.st)this.st.d=m.d==='r'?-1:1;break;
+      case 'shuttle':this.shuttle(m.v);break;
       case 'tape':if(m.on)this.tapeOn(m.len);else this.tapeOff(m.spin);break;
     }
   }
@@ -458,7 +460,7 @@ class Remixer extends AudioWorkletProcessor{
       return;
     }
     const len=div*this.spb;
-    if(!this.st){this.st={a:this.grid(this.ghost,len),len,ph:0};this.sp=1;this.spC=1;}
+    if(!this.st){this.st={a:this.grid(this.ghost,len),len,ph:0,d:this.stDir==='f'?1:-1};this.sp=1;this.spC=1;}
     else this.st.len=len;
     const s=this.st;s.ph=Math.floor((this.ghost-s.a)/s.len);
     if(this.pos>=s.a+s.len||this.pos<s.a)this.jump(this.wrap(this.pos));
@@ -489,6 +491,19 @@ class Remixer extends AudioWorkletProcessor{
     }else{tgt=this.ghost;this.tape=0;this.rate=1;}
     tgt=this.wrap(tgt);
     if(this.tAmp<.01)this.pos=tgt;else this.jump(tgt);
+  }
+  shuttle(v){ // the chaos reel winds the song: v<0 rewinds, v>0 winds on, 0 holds it still, null lets go
+    if(v==null){
+      if(this.tape!==4)return;
+      this.tape=0;this.rate=1;this.dir=1;
+      const tgt=this.wrap(this.ghost);
+      if(this.tAmp<.01)this.pos=tgt;else this.jump(tgt);
+      return;
+    }
+    const nd=v<0?-1:1;
+    if(this.tape!==4){this.tape=4;this.st=null;}
+    if(nd!==this.dir&&this.run>1e-3&&this.tAmp>1e-3){this.xfPos=this.pos;this.xf=this.XF;this.xfDir=1;}
+    this.dir=nd;this.rate=Math.min(4,Math.abs(v));
   }
   psTap(buf,d){
     const N=this.PSN;let p=this.psWi-d;if(p<0)p+=N;
@@ -603,12 +618,16 @@ class Remixer extends AudioWorkletProcessor{
       }
       const s=this.st;
       if(s)this.spC+=(this.sp-this.spC)*this.kSp;
-      this.pos+=this.rate*this.dir*(s?this.spC:1)*(this.psMode!=='k'?this.psR:1);this.ghost+=1;if(this.pos<0)this.pos=0;
+      this.pos+=this.rate*this.dir*(s?this.spC*s.d:1)*(this.psMode!=='k'?this.psR:1);
+      this.ghost+=(this.tape===4?this.rate*this.dir:1);if(this.pos<0)this.pos=0;
+      if(this.tape===4&&this.ghost<this.ra){this.ghost=this.ra;this.pos=this.ra;}
       if(this.psSync&&Math.abs(this.psR-1)<1e-3&&(this.psMode==='k'||!this.psOn)){
         this.psSync=false;
         if(!s&&this.dir===1&&this.tape===0&&Math.abs(this.pos-this.ghost)>2)this.jump(this.ghost);
       }
-      if(s){const ph=Math.floor((this.ghost-s.a)/s.len);if(ph!==s.ph){s.ph=ph;this.jump(this.dir>0?s.a:s.a+s.len);}}
+      if(s){const ph=Math.floor((this.ghost-s.a)/s.len);if(ph!==s.ph){s.ph=ph;
+        if(this.stDir==='p')s.d=-s.d;                       // ping-pong: flip on every repeat
+        this.jump(this.dir*s.d>0?s.a:s.a+s.len);}}
       const bp=(this.ghost-this.off)/this.spb;
       let gt=1;
       if(this.gOn){const x=bp/this.gStep;if(x-Math.floor(x)>=.5)gt=1-this.gDepth;}
@@ -1171,11 +1190,11 @@ const SPEC={
     {k:'dSpeed',l:'Fade',min:5,max:300,v:40,f:v=>v+'ms'}
   ],
   stut:[
-    {h:'STUTTER · SLIDE',c:'#f472b6'},
-    {k:'slide',l:'Slide does',chips:[['Pitch','p'],['Filter','f'],['Both','b']],v:'p'},
+    {h:'STUTTER',c:'#f472b6'},
+    {k:'dir',l:'Direction',chips:[['Forward','f'],['Reverse','r'],['Ping-pong','p']],v:'f'},
     {k:'range',l:'Range',min:1,max:24,v:12,f:v=>'±'+v+' st'},
     {k:'snap',l:'Snap notes',toggle:1,v:true},
-    {k:'dist',l:'Slide size',min:60,max:300,v:140,f:v=>v+'px'}
+    {k:'dist',l:'Drag size',min:60,max:300,v:140,f:v=>v+'px'}
   ],
   pitch:[
     {h:'PITCH',c:'#9b6bff'},
@@ -1363,9 +1382,10 @@ function applyCfg(ns){
   else if(ns==='tempo')applyTempoStyle();
   else if(ns==='pd'){const v=cv(ns);send({t:'xyp',p:{pRate:v.pRate,pRel:v.pRel/100}});fx.pump.depth=v.pDepth/100;sendPump();duckP=v;if(fx.duck.on)setDuck(true);}
   else if(ns==='pitch')sendPitch();
+  else if(ns==='stut')send({t:'stdir',d:getV('stut','dir')});
   else if(ns==='tape'){const v=cv(ns);fx.tape.len=v.len;fx.tape.spin=v.spin;send({t:'xyp',p:{spin:v.spinLen/100}});}
 }
-function applyAll(){['fx','pd','tape','pitch','xy','xy2'].forEach(applyCfg);}
+function applyAll(){['fx','pd','tape','pitch','stut','xy','xy2'].forEach(applyCfg);}
 function applyTempoStyle(){
   const t=$('#tempo'),g=k=>getV('tempo',k);
   t.style.setProperty('--tbg',g('cBg'));t.style.setProperty('--tfg',g('cFg'));t.style.setProperty('--tcur',g('cCur'));
@@ -1809,9 +1829,9 @@ function setTape(on){fx.tape.on=on;mark('tape',on);send({t:'tape',on,len:fx.tape
 function setRev(on){fx.rev.on=on;mark('rev',on);send({t:'rev',on});}
 const STUT_DIVS=[[4,'1 BAR'],[2,'1/2'],[1,'1/4'],[.5,'1/8'],[.25,'1/16'],[.125,'1/32']];
 function stutSlide(v,padEl){
-  const mode=getV('stut','slide'),range=getV('stut','range');
+  const range=getV('stut','range');
   let semis=v*range;if(getV('stut','snap'))semis=Math.round(semis);
-  const pitch=mode!=='f',filt=mode!=='p';
+  const pitch=true,filt=true;
   send({t:'stp',v:pitch?Math.pow(2,semis/12):1});
   if(ctx){
     const t=ctx.currentTime,tc=.012,fv=filt?v:0;
@@ -2628,7 +2648,7 @@ function openChaos(id){
   if(r&&r.right+8+W>innerWidth)w.style.left=Math.max(4,r.left-W-8)+'px';
   chaosInfo();requestAnimationFrame(chaosFrame);
 }
-function closeChaos(){if(CH.live)chaosDrive(false);CH.live=false;CH.open=false;$('#chaos').style.display='none';}
+function closeChaos(){if(CH.live)chaosDrive(false);if(CH.id==='tape')send({t:'shuttle',v:null});CH.live=false;CH.open=false;$('#chaos').style.display='none';}
 // the mix: three motion axes (spin angle, tilt, how hard it's spinning) blended into every setting with its own fixed weights
 function chaosValue(r,i){
   const h=k=>hash1(CH.seed*97+i*31+k*7),w1=(1+Math.floor(h(1)*3))*(h(2)<.5?-1:1),w2=(h(3)-.5)*3,w3=(h(4)-.5)*2.4,ph=h(5);
@@ -2648,7 +2668,11 @@ function chaosDrive(on){
   if(id==='xy'||id==='xy2'||id==='aquaM'||id==='acidM'){const F=fx[id];if(on){F.on=true;F.gx=u;F.gy=1-v;}else if(!F.latch)F.on=false;pushFX();if(UI.padCan[id])drawPad(id);}
   else if(id==='stut'){if(on){const d=STUT_DIVS[Math.min(5,Math.floor(E*6))][0];if(fx.stut.active!==d)setStut(d);}else if(!fx.stut.latch)setStut(0);}
   else if(id==='pd'){if(!fx.pump.latch&&fx.pump.on!==on)setPump(on);}
-  else if(id==='tape'){if(!fx.tape.latch&&fx.tape.on!==on)setTape(on);}
+  else if(id==='tape'){ // spin the reel to wind the song: which way you spin is which way it goes, still = stopped
+    const sp=CH.vy,mag=Math.max(0,Math.abs(sp)-.012)*55;
+    send({t:'shuttle',v:on?(sp<0?-1:1)*Math.min(4,mag):0});
+    if(fx.tape.on)setTape(false);
+  }
   else if(id==='pitch'){if(on){const st=PITCHES[Math.min(PITCHES.length-1,Math.floor(u*PITCHES.length))];if(fx.pitch.active!==st)setPitch(st);}else if(!fx.pitch.latch)setPitch(null);}
   else if(id==='angelM'){const F=fx.angelM;F.all=on;if(on){anVert(F,v);F.spread=Math.min(1,.3+E);}F.on=F.touches.size>0||F.all||F.latch;}
 }
@@ -2858,7 +2882,7 @@ const MENUS={
   xy:[{k:'ax',l:'X',opts:AXOPTS},{k:'ay',l:'Y',opts:AXOPTS}],
   xy2:[{k:'ax',l:'X',opts:AXOPTS},{k:'ay',l:'Y',opts:AXOPTS}],
   pd:[{k:'pRate',l:'Rate',opts:[['1/8',.5],['1/4',1],['1/2',2]]},{k:'pDepth',l:'Depth',opts:[40,60,80,100].map(v=>[v+'%',v])},{k:'dLow',l:'Duck',opts:[['Light',120],['Med',220],['Heavy',380]]}],
-  stut:[{k:'slide',l:'Slide',opts:[['Pitch','p'],['Filter','f'],['Both','b']]},{k:'range',l:'Range',opts:[3,5,7,12,24].map(v=>['±'+v,v])}],
+  stut:[{k:'dir',l:'Direction',opts:[['Forward','f'],['Reverse','r'],['Ping-pong','p']]},{k:'range',l:'Range',opts:[3,5,7,12,24].map(v=>['±'+v,v])}],
   tape:[{k:'len',l:'Length',opts:[['½ beat',.5],['1 beat',1],['2 beats',2],['4 beats',4]]},{k:'spin',l:'Spin',opts:[['On',true],['Off',false]]}],
   viewer:[{k:'vfx',l:'Effects',opts:[['Both pads','both'],['Pad A only','xy'],['Pad B only','xy2'],['None (clean)','none']]},{k:'vfit',l:'View',opts:[['Fit whole frame','contain'],['Fill window','cover']]},{k:'vcrt',l:'Screen',opts:[['Clean','off'],['Old TV (subtle)','soft'],['Old TV (strong)','hard']]},{k:'vrot',l:'Rotate',opts:[['0°',0],['90° ↻',90],['180°',180],['270° ↻',270]]},{k:'vscope',l:'Scope',opts:[['Off','none'],['Pad A','xy'],['Pad B','xy2'],['Both pads','both']]},{k:'vgrid',l:'Grid',opts:[['On','on'],['Off','off']]}],
   angelM:[{k:'anPlay',l:'Plays',opts:[['Voices + harp','both'],['Voices only','voices'],['Harp only','harp']]},{k:'anType',l:'Voice',opts:[['Choir','choir'],['Glass','glass'],['Warm pad','pad'],['Organ','organ'],['Robot','robot'],['Breathy','breath']]},{k:'anHarm',l:'Harmony',opts:[['Unison','u'],['Fifths','f'],['Triad','t'],['Seventh','s'],['Cluster','c'],['Melody + choir','m']]},{k:'anVert',l:'Up/down',opts:[['Volume swell','swell'],['Vowel','vowel']]}],
