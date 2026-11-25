@@ -1678,7 +1678,7 @@ function drawVideoFx(g,W,H,d,id,a=padAmts(id),opt={}){
   const A=k=>a[k]||0,t=performance.now()/1000;
   const src=opt.src||vshow,vw=src.videoWidth||src.width,vh=src.videoHeight||src.height;
   const fit=opt.contain?Math.min(W/vw,H/vh):Math.max(W/vw,H/vh),sc=fit*(1+vidLevel*(opt.contain?.02:.05)),dw=vw*sc,dh=vh*sc;
-  const px=opt.pan?opt.pan.x:0,py=opt.pan?opt.pan.y:0,dx=(W-dw)/2+px*(dw-W)/2,dy=(H-dh)/2+py*(dh-H)/2;
+  const pn=opt.pan&&!opt.contain?opt.pan:null,px=pn?pn.x:0,py=pn?pn.y:0,dx=(W-dw)/2+px*(dw-W)/2,dy=(H-dh)/2+py*(dh-H)/2;
   if(opt.over){opt.over.x=dw-W;opt.over.y=dh-H;}
   const T=vcanvas(id+'t',W,H),tg=T.getContext('2d');
   // datamosh (smear): push last frame's blocks along a slow flow field, only partly refresh with the new frame
