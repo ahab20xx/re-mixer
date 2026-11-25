@@ -606,7 +606,7 @@ const LOCK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-wi
 $$('.latch[data-fx]').forEach(b=>b.innerHTML=LOCK);
 
 let vid=null,vidB=null,posQ=0,rateR=1,vidLevel=0;
-let ctx=null,node=null,hp=null,hs=null,comp=null,audioErr=null,fxHP,fxLP,stHP,stLP,echoSend,echoDelay,echoFb,revSend,conv,revPre,revLP,revHP,mPan=null,mVol=null,recDest=null,analyser=null,scopeBuf=null;
+const aq={},ac={};let ctx=null,node=null,hp=null,hs=null,comp=null,audioErr=null,fxHP,fxLP,stHP,stLP,echoSend,echoDelay,echoFb,revSend,conv,revPre,revLP,revHP,mPan=null,mVol=null,recDest=null,analyser=null,scopeBuf=null;
 let sr=48000,lenS=0,peaks=null;
 let bpm=120,offSec=0,detected={bpm:120,off:0};
 let playing=false,posS=0,posAt=0,wakeLock=null;
@@ -666,7 +666,20 @@ async function ensureAudio(){
   revSend=ctx.createGain();revSend.gain.value=0;conv=ctx.createConvolver();
   stHP=ctx.createBiquadFilter();stHP.type='highpass';stHP.frequency.value=10;
   stLP=ctx.createBiquadFilter();stLP.type='lowpass';stLP.frequency.value=20000;
-  node.connect(hp).connect(hs).connect(fxHP).connect(fxLP).connect(stHP).connect(stLP).connect(bus);
+  node.connect(hp).connect(hs).connect(fxHP).connect(fxLP).connect(stHP).connect(stLP);
+  // AQUA: wobbling short delay (chorus) + sloshing muffled low-pass
+  aq.in=ctx.createGain();aq.dry=ctx.createGain();aq.wet=ctx.createGain();aq.wet.gain.value=0;
+  aq.del=ctx.createDelay(.1);aq.del.delayTime.value=.012;
+  aq.lfo=ctx.createOscillator();aq.lfo.frequency.value=.8;aq.lfoG=ctx.createGain();aq.lfoG.gain.value=0;aq.lfo.connect(aq.lfoG).connect(aq.del.delayTime);aq.lfo.start();
+  aq.lp=ctx.createBiquadFilter();aq.lp.type='lowpass';aq.lp.frequency.value=20000;aq.lp.Q.value=1.5;
+  aq.lfo2=ctx.createOscillator();aq.lfo2.frequency.value=.23;aq.lfo2G=ctx.createGain();aq.lfo2G.gain.value=0;aq.lfo2.connect(aq.lfo2G).connect(aq.lp.detune);aq.lfo2.start();
+  aq.pk=ctx.createBiquadFilter();aq.pk.type='peaking';aq.pk.frequency.value=500;aq.pk.Q.value=.9;aq.pk.gain.value=0;
+  stLP.connect(aq.in);aq.in.connect(aq.dry).connect(aq.lp);aq.in.connect(aq.del).connect(aq.wet).connect(aq.lp);aq.lp.connect(aq.pk);
+  aq.bub=ctx.createGain();aq.bub.connect(bus);
+  // ACID: 303-style resonant low-pass swept on every step, then drive
+  ac.lp=ctx.createBiquadFilter();ac.lp.type='lowpass';ac.lp.frequency.value=20000;ac.lp.Q.value=0;
+  ac.dry=ctx.createGain();ac.wet=ctx.createGain();ac.wet.gain.value=0;ac.sh=ctx.createWaveShaper();ac.sh.oversample='2x';
+  aq.pk.connect(ac.lp);ac.lp.connect(ac.dry).connect(bus);ac.lp.connect(ac.sh).connect(ac.wet).connect(bus);
   bus.connect(comp);
   bus.connect(echoSend).connect(echoDelay);echoDelay.connect(echoTone).connect(echoFb).connect(echoDelay);echoDelay.connect(comp);
   revPre=ctx.createDelay(1);revPre.delayTime.value=0;
@@ -1103,9 +1116,9 @@ const SPEC={
     {k:'spinLen',l:'Spin (beats)',min:10,max:200,v:50,f:v=>(v/100).toFixed(2)}
   ]
 };
-const AXFX=[['','None'],['glitch','Glitch'],['warble','Warble'],['lpf','Low-pass'],['hpf','High-pass'],['crush','Bitcrush'],['echo','Echo'],['reverb','Reverb'],['gate','Gate'],['pup','Pitch up'],['pdn','Pitch down'],['ring','Ring mod'],['smear','Smear']];
+const AXFX=[['','None'],['glitch','Glitch'],['warble','Warble'],['lpf','Low-pass'],['hpf','High-pass'],['crush','Bitcrush'],['echo','Echo'],['reverb','Reverb'],['gate','Gate'],['pup','Pitch up'],['pdn','Pitch down'],['ring','Ring mod'],['smear','Smear'],['aqua','Aqua'],['acid','Acid']];
 const FXNAME=Object.fromEntries(AXFX);
-const FXCOL={glitch:'#22d3ee',warble:'#a78bfa',lpf:'#60a5fa',hpf:'#34d399',crush:'#f87171',echo:'#fbbf24',reverb:'#c084fc',gate:'#38bdf8',pup:'#9b6bff',pdn:'#6b5bff',pitch:'#9b6bff',ring:'#ff3b8b',smear:'#6bff5a'};
+const FXCOL={glitch:'#22d3ee',warble:'#a78bfa',lpf:'#60a5fa',hpf:'#34d399',crush:'#f87171',echo:'#fbbf24',reverb:'#c084fc',gate:'#38bdf8',pup:'#9b6bff',pdn:'#6b5bff',pitch:'#9b6bff',ring:'#ff3b8b',smear:'#6bff5a',aqua:'#00e0c0',acid:'#c6ff00'};
 const FXGROUP={pup:'pitch',pdn:'pitch'};
 const FXSPEC={
   warble:[{h:'WARBLE'},
@@ -1143,6 +1156,20 @@ const FXSPEC={
     {k:'smSpread',l:'Spread',min:20,max:1500,v:400,f:v=>v+'ms'},
     {k:'smHold',l:'Hold',min:0,max:100,v:80,f:pct},
     {k:'smMosh',l:'Datamosh',min:0,max:100,v:100,f:pct}],
+  aqua:[{h:'AQUA'},
+    {k:'aqDepth',l:'Muffle',min:0,max:100,v:70,f:pct},
+    {k:'aqSway',l:'Sway',min:0,max:100,v:50,f:pct},
+    {k:'aqBubS',l:'Bubble sounds',min:0,max:100,v:40,f:pct},
+    {k:'aqCaus',l:'Caustics',min:0,max:100,v:80,f:pct},
+    {k:'aqBubV',l:'Bubbles',min:0,max:100,v:50,f:pct},
+    {k:'aqWeed',l:'Seaweed',min:0,max:100,v:50,f:pct}],
+  acid:[{h:'ACID'},
+    {k:'acRes',l:'Resonance',min:0,max:100,v:75,f:pct},
+    {k:'acEnv',l:'Sweep',min:0,max:100,v:70,f:pct},
+    {k:'acRate',l:'Steps',chips:[['1/8',.5],['1/16',.25],['1/32',.125]],v:.25},
+    {k:'acDrive',l:'Drive',min:0,max:100,v:50,f:pct},
+    {k:'acBub',l:'Toxic bubbles',min:0,max:100,v:60,f:pct},
+    {k:'acGoo',l:'Goo',min:0,max:100,v:60,f:pct}],
   pitch:[{h:'PITCH'},
     {k:'pMode',l:'Mode',chips:[['Speed','s'],['Keep tempo','k'],['Keep pitch','t']],v:'k'},
     {k:'pRange',l:'Range',min:1,max:24,v:12,f:v=>v+' st'},
@@ -1241,7 +1268,7 @@ function updateReverb(){
 
 /* ---------- effect state -> audio + UI ---------- */
 let UI={pads:{},cards:{},padCan:{},gateCan:null,stutPads:[]};
-let eff={glitch:0,warble:0,lpf:0,hpf:0,crush:0,echo:0,reverb:0,gate:0,pup:0,pdn:0,ring:0,smear:0};
+let eff={glitch:0,warble:0,lpf:0,hpf:0,crush:0,echo:0,reverb:0,gate:0,pup:0,pdn:0,ring:0,smear:0,aqua:0,acid:0};
 function refreshCards(){
   for(const [k,c] of Object.entries(UI.cards)){
     const on=k==='pd'?(fx.pump.on||fx.duck.on):k==='stut'?!!fx.stut.active:fx[k]&&fx[k].on;
@@ -1251,7 +1278,7 @@ function refreshCards(){
 function mark(key,on){const p=UI.pads[key];if(p)p.classList.toggle('on',!!on);refreshCards();}
 const dz=v=>v<.06?0:(v-.06)/.94;
 function pushFX(){
-  eff={glitch:0,warble:0,lpf:0,hpf:0,crush:0,echo:0,reverb:0,gate:0,pup:0,pdn:0,ring:0,smear:0};
+  eff={glitch:0,warble:0,lpf:0,hpf:0,crush:0,echo:0,reverb:0,gate:0,pup:0,pdn:0,ring:0,smear:0,aqua:0,acid:0};
   for(const id of ['xy','xy2']){
     const F=fx[id];if(!F.on||!onPage(id))continue;
     const ax=getV(id,'ax'),ay=getV(id,'ay');
@@ -1270,6 +1297,50 @@ function pushFX(){
   fxHP.Q.setTargetAtTime(eff.hpf>0?.7+getV('fx','hpQ')/10*eff.hpf:.7,t,tc);
   echoSend.gain.setTargetAtTime(eff.echo,t,tc);
   revSend.gain.setTargetAtTime(eff.reverb*1.2*getV('fx','rLevel')/100,t,tc);
+  if(aq.lp){ // aqua
+    const a=eff.aqua,dp=getV('fx','aqDepth')/100,sw=getV('fx','aqSway')/100;
+    aq.lp.frequency.setTargetAtTime(a>0?20000*Math.pow(320/20000,a*(.35+.65*dp)):20000,t,.03);
+    aq.lfo2G.gain.setTargetAtTime(a*sw*450,t,.05);
+    aq.wet.gain.setTargetAtTime(a*(.3+.5*sw),t,.03);aq.dry.gain.setTargetAtTime(1-a*.3,t,.03);
+    aq.lfoG.gain.setTargetAtTime(a*(.0015+.004*sw),t,.05);aq.lfo.frequency.setTargetAtTime(.45+sw*1.3,t,.1);
+    aq.pk.gain.setTargetAtTime(a*5,t,.03);
+  }
+  if(ac.lp){ // acid drive amount (the filter itself is swept every frame in acidTick)
+    const w=eff.acid*getV('fx','acDrive')/100,k=Math.round((1+getV('fx','acDrive')/100*24)*10)/10;
+    if(ac.k!==k){ac.k=k;const n=1024,c=new Float32Array(n),nm=Math.tanh(k);for(let i=0;i<n;i++){const x=i/(n-1)*2-1;c[i]=Math.tanh(k*x)/nm;}ac.sh.curve=c;}
+    ac.wet.gain.setTargetAtTime(w*.75,t,.02);ac.dry.gain.setTargetAtTime(1-w*.85,t,.02);
+  }
+}
+// ---- acid: sweep the resonant filter on every step of the beat grid ----
+const ACC=[1,.45,.8,.35,.95,.55,.3,.85,1,.4,.7,.5,.9,.35,.6,.75]; // accent pattern
+let acidEnv=0;
+function acidStep(pos){ // envelope (0..1) for a position in samples
+  const step=60/bpm*sr*getV('fx','acRate'),b=(pos-offSec*sr)/step,i=Math.floor(b),ph=b-i;
+  return ACC[((i%16)+16)%16]*Math.exp(-ph*4.2);
+}
+function acidTick(){
+  if(!ac.lp)return;const a=eff.acid;
+  if(a<=0){if(ac.off)return;ac.off=1;acidEnv=0;ac.lp.frequency.setTargetAtTime(20000,ctx.currentTime,.02);ac.lp.Q.setTargetAtTime(0,ctx.currentTime,.02);return;}
+  ac.off=0;
+  const pos=playing?posQ+(performance.now()-posAt)/1000*rateR*sr:posS;
+  const e=lenS?acidStep(pos):0;acidEnv=e;
+  const low=20000*Math.pow(160/20000,Math.pow(a,.6)),peak=Math.min(16000,low*Math.pow(2,1+getV('fx','acEnv')/100*6));
+  ac.lp.frequency.setTargetAtTime(low*Math.pow(peak/low,e),ctx.currentTime,.006);
+  ac.lp.Q.setTargetAtTime(a*getV('fx','acRes')/100*20,ctx.currentTime,.02);
+}
+// ---- aqua: little rising "bloop" bubbles ----
+function bubble(a){
+  const t=ctx.currentTime+.005,f0=250+Math.random()*900,dur=.04+Math.random()*.1,o=ctx.createOscillator(),g=ctx.createGain();
+  o.type='sine';o.frequency.setValueAtTime(f0,t);o.frequency.exponentialRampToValueAtTime(f0*(1.8+Math.random()*1.4),t+dur);
+  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.16*a,t+.004);g.gain.exponentialRampToValueAtTime(.0005,t+dur);
+  o.connect(g).connect(aq.bub);o.start(t);o.stop(t+dur+.02);
+}
+let bubAt=0;
+function bubbleTick(){
+  const now=performance.now(),dt=Math.min(.1,(now-(bubAt||now))/1000);bubAt=now;
+  if(!ctx||!aq.bub||!playing||eff.aqua<=0)return;
+  const r=eff.aqua*getV('fx','aqBubS')/100*14;
+  if(Math.random()<r*dt){bubble(eff.aqua);if(Math.random()<.35)setTimeout(()=>bubble(eff.aqua*.8),30+Math.random()*80);}
 }
 function padSet(id,on){fx[id].on=on;pushFX();drawPad(id);}
 const GZ=[{s:2,l:'1/2'},{s:1,l:'1/4'},{s:.5,l:'1/8'},{s:.25,l:'1/16'},{s:.125,l:'1/32'}];
@@ -1426,6 +1497,7 @@ function drawVideoFx(g,W,H,d,id,a=padAmts(id),opt={}){
   if(A('hpf'))f+=`contrast(${(1+A('hpf')*2.4).toFixed(2)}) saturate(${(1-A('hpf')*.7).toFixed(2)}) `;
   const hue=(A('pup')-A('pdn'))*160;if(hue)f+=`hue-rotate(${hue.toFixed(0)}deg) `;
   const inv=Math.min(1,A('ring')*1.25)*getV('fx','rgInv')/100;if(inv>0)f+=`invert(${inv.toFixed(2)}) `;
+  if(A('acid')>0){const q=A('acid');f+=`invert(${(q*.42).toFixed(2)}) hue-rotate(${((t*70+acidEnv*120)%360).toFixed(0)}deg) saturate(${(1+q*2.2).toFixed(2)}) `;}
   if(A('gate')&&lenS){const st=getV('fx','gRate'),b=(heardPos()-offSec*sr)/(60/bpm*sr)/st;if(b-Math.floor(b)>=.5)f+=`brightness(${(1-A('gate')*.85).toFixed(2)}) `;}
   tg.filter=f||'none';
   if(A('crush')){ // pixelate
@@ -1434,16 +1506,105 @@ function drawVideoFx(g,W,H,d,id,a=padAmts(id),opt={}){
   }else tg.drawImage(src,dx,dy,dw,dh);
   tg.filter='none';tg.globalAlpha=1;
   // warble: wavy rows
-  const wb=A('warble');
-  if(wb>0){const step=Math.max(2,Math.round(3*d));for(let y=0;y<H;y+=step){const ox=Math.sin(y*.035/d+t*4.5)*wb*16*d;g.drawImage(T,0,y,W,step,ox,y,W,step);}}
+  const wb=A('warble'),aqw=A('aqua')*(.3+.7*getV('fx','aqSway')/100); // aqua: slow water ripple
+  if(wb>0||aqw>0){const step=Math.max(2,Math.round(3*d));for(let y=0;y<H;y+=step){const ox=Math.sin(y*.035/d+t*4.5)*wb*16*d+Math.sin(y*.018/d+t*1.6)*aqw*8*d;g.drawImage(T,0,y,W,step,ox,y,W,step);}}
   else g.drawImage(T,0,0);
   // reverb: glow
   if(A('reverb')>0){g.save();g.globalCompositeOperation='lighter';g.globalAlpha=A('reverb')*.55;g.filter=`blur(${(10*d).toFixed(0)}px)`;g.drawImage(T,0,0);g.restore();}
   // glitch: torn slices
   const gl=A('glitch');
   for(let i=0;i<3;i++)if(gl>0&&Math.random()<gl*.55){const by=Math.random()*H,bh=(4+Math.random()*30)*d;g.drawImage(T,0,by,W,bh,(Math.random()-.5)*gl*60*d,by,W,bh);}
+  drawScene(g,W,H,d,a,opt.key||id);
   // keep the trace and labels readable over bright video
   if(opt.dim!==false){g.fillStyle='rgba(0,0,0,.18)';g.fillRect(0,0,W,H);}
+}
+/* ---------- Aqua + Acid scenes (drawn over the video, or on the bare pad screen) ---------- */
+const scn={};
+const hash1=n=>{let h=Math.imul(n^0x9e3779b9,2654435761)>>>0;h^=h>>>15;return (h&65535)/65536;};
+let causC=null,causI=null;
+function caustics(t,cw,ch){ // classic "pool floor" interference pattern, small and blurred up
+  if(!causC||causC.width!==cw||causC.height!==ch){causC=document.createElement('canvas');causC.width=cw;causC.height=ch;causI=causC.getContext('2d').createImageData(cw,ch);}
+  const D=causI.data,TAU=6.2831853;
+  for(let y=0;y<ch;y++)for(let x=0;x<cw;x++){
+    const px=(x/cw*1.6*cw/ch)*TAU-250,py=(y/ch*1.6)*TAU-250;let ix=px,iy=py,c=1;
+    for(let n=0;n<4;n++){const tt=t*(1-3.5/(n+1));const nx=px+Math.cos(tt-ix)+Math.sin(tt+iy),ny=py+Math.sin(tt-iy)+Math.cos(tt+ix);ix=nx;iy=ny;
+      c+=1/Math.hypot(px/(Math.sin(ix+tt)/.005),py/(Math.cos(iy+tt)/.005));}
+    c/=4;c=1.17-Math.pow(c,1.4);const v=Math.min(1,Math.pow(Math.abs(c),8));
+    const o=(y*cw+x)*4;D[o]=v*150;D[o+1]=v*235;D[o+2]=v*255;D[o+3]=255;
+  }
+  causC.getContext('2d').putImageData(causI,0,0);return causC;
+}
+function drawScene(g,W,H,d,a,key){
+  const aqa=a.aqua||0,aca=a.acid||0;if(aqa<=0&&aca<=0){if(scn[key])scn[key].bub.length=0;return;}
+  const S=scn[key]||(scn[key]={bub:[],tb:[],pops:[],at:performance.now()}),now=performance.now(),dt=Math.min(.1,(now-S.at)/1000),t=now/1000;S.at=now;
+  const M=Math.min(W,H);g.save();
+  if(aqa>0){
+    // water tint
+    g.globalCompositeOperation='multiply';g.fillStyle=`rgba(90,190,215,${(aqa*.75).toFixed(3)})`;g.fillRect(0,0,W,H);
+    g.globalCompositeOperation='source-over';g.fillStyle=`rgba(0,50,80,${(aqa*.22).toFixed(3)})`;g.fillRect(0,0,W,H);
+    // caustics
+    const ca=aqa*getV('fx','aqCaus')/100;
+    if(ca>0){const cw=72,ch=Math.max(16,Math.min(72,Math.round(72*H/W)));const C=caustics(t*.6,cw,ch);
+      g.globalCompositeOperation='lighter';g.globalAlpha=ca*.55;g.imageSmoothingEnabled=true;g.drawImage(C,0,0,W,H);g.globalAlpha=1;}
+    g.globalCompositeOperation='source-over';
+    // seaweed
+    const nw=Math.round(getV('fx','aqWeed')/100*12);
+    for(let i=0;i<nw;i++){
+      const x0=((i+.5)/nw+(hash1(i)-.5)*.6/nw)*W,h=H*(.18+.34*hash1(i+50))*Math.min(1,aqa*1.6),ph=hash1(i+99)*6,seg=10;
+      let x=x0,y=H;g.lineCap='round';
+      for(let k=1;k<=seg;k++){const f=k/seg,nx=x0+Math.sin(t*1.1+ph+k*.38)*Math.pow(f,1.5)*.09*W*(.6+.8*hash1(i+7)),ny=H-h*f;
+        g.strokeStyle=`rgba(${30+k*6},${120+k*8},${60+k*3},.92)`;g.lineWidth=Math.max(1,(7-5.5*f)*d*(.7+.6*hash1(i+3)));
+        g.beginPath();g.moveTo(x,y);g.lineTo(nx,ny);g.stroke();x=nx;y=ny;}
+    }
+    // bubbles
+    const rate=aqa*getV('fx','aqBubV')/100*22;
+    if(Math.random()<rate*dt)S.bub.push({x:Math.random(),y:1.04,r:.004+Math.random()*.016,v:.12+Math.random()*.3,ph:Math.random()*6});
+    g.lineWidth=Math.max(1,1.2*d);
+    for(const b of S.bub){b.y-=b.v*dt;b.x+=Math.sin(t*3+b.ph)*.0012;
+      const bx=b.x*W,by=b.y*H,r=b.r*M;g.strokeStyle='rgba(220,250,255,.75)';g.beginPath();g.arc(bx,by,r,0,6.283);g.stroke();
+      g.fillStyle='rgba(255,255,255,.7)';g.beginPath();g.arc(bx-r*.35,by-r*.35,Math.max(.8*d,r*.22),0,6.283);g.fill();}
+    S.bub=S.bub.filter(b=>b.y>-.05);
+  }else S.bub.length=0;
+  if(aca>0){
+    // warped partial inversion: drifting colour bands in "difference" mode
+    { const ang=t*.35,cx=W/2+Math.cos(ang)*W*.6,cy=H/2+Math.sin(ang*1.3)*H*.6,gr=g.createLinearGradient(W-cx,H-cy,cx,cy),ph=(t*.25)%1;
+      const cols=['255,0,200','190,255,0','0,230,255','255,120,0'];
+      for(let i=0;i<=8;i++){const p=(i/8+ph)%1;gr.addColorStop(p,`rgba(${cols[i%4]},1)`);}
+      g.globalCompositeOperation='difference';g.globalAlpha=Math.min(.85,aca*.6*(1+.4*acidEnv));g.fillStyle=gr;g.fillRect(0,0,W,H);g.globalAlpha=1; }
+    // toxic tint, flashing on every acid step
+    g.globalCompositeOperation='multiply';g.fillStyle=`rgba(170,255,90,${(aca*.55).toFixed(3)})`;g.fillRect(0,0,W,H);
+    g.globalCompositeOperation='lighter';g.fillStyle=`rgba(110,255,20,${(aca*.22*acidEnv).toFixed(3)})`;g.fillRect(0,0,W,H);
+    g.globalCompositeOperation='source-over';
+    // goo dripping from the top
+    const ng=Math.round(getV('fx','acGoo')/100*9),goo=(x,y,r)=>{g.beginPath();g.arc(x,y,r,0,6.283);g.fill();};
+    if(ng>0){
+      g.fillStyle='rgba(120,255,25,.93)';
+      const top=H*.035*Math.min(1,aca*1.5);g.fillRect(0,0,W,top);
+      for(let x=0;x<=W;x+=14*d)goo(x,top,(6+5*Math.sin(x*.05/d+t*1.3))*d*Math.min(1,aca*1.5));
+      for(let i=0;i<ng;i++){
+        const x=((i+.5)/ng+(hash1(i+300)-.5)*.5/ng)*W,sp=.25+hash1(i+310)*.35,cyc=(t*sp+hash1(i+320))%1,w=(4+hash1(i+330)*7)*d*Math.min(1,aca*1.5);
+        const len=H*(.08+.3*hash1(i+340))*Math.min(1,cyc/.75),drop=cyc>.75?(cyc-.75)/.25:0;
+        g.fillRect(x-w/2,0,w,top+len*(1-drop*.3));goo(x,top+len*(1-drop*.3),w*.85);
+        if(drop>0)goo(x,top+len+drop*drop*H,w*.7); // falling blob
+      }
+      // shine
+      g.fillStyle='rgba(230,255,200,.5)';for(let i=0;i<ng;i++){const x=((i+.5)/ng+(hash1(i+300)-.5)*.5/ng)*W;g.fillRect(x-1.5*d,top*.5,1.5*d,H*.05*Math.min(1,aca*1.5));}
+    }
+    // toxic bubbles: rise, wobble, pop
+    const rate=aca*getV('fx','acBub')/100*16*(1+acidEnv);
+    if(Math.random()<rate*dt)S.tb.push({x:Math.random(),y:1.05,r:.012+Math.random()*.03,v:.08+Math.random()*.2,ph:Math.random()*6,pop:.15+Math.random()*.7});
+    for(const b of S.tb){b.y-=b.v*dt;b.x+=Math.sin(t*2.4+b.ph)*.0015;
+      const bx=b.x*W,by=b.y*H,r=b.r*M*(1+.12*Math.sin(t*7+b.ph));
+      const gr=g.createRadialGradient(bx-r*.3,by-r*.3,r*.1,bx,by,r);gr.addColorStop(0,'rgba(240,255,170,.95)');gr.addColorStop(.5,'rgba(150,255,40,.65)');gr.addColorStop(1,'rgba(60,170,0,.35)');
+      g.fillStyle=gr;g.beginPath();g.arc(bx,by,r,0,6.283);g.fill();g.strokeStyle='rgba(30,90,0,.8)';g.lineWidth=Math.max(1,1.3*d);g.stroke();
+      if(b.y<b.pop){b.dead=1;S.pops.push({x:bx/W,y:by/H,r:b.r,a:1});}}
+    S.tb=S.tb.filter(b=>!b.dead&&b.y>-.08);
+    for(const p of S.pops){p.a-=dt*3;const r=p.r*M*(1+(1-p.a)*1.8);g.strokeStyle=`rgba(190,255,60,${Math.max(0,p.a).toFixed(2)})`;g.lineWidth=2*d;
+      g.beginPath();g.arc(p.x*W,p.y*H,r,0,6.283);g.stroke();
+      for(let k=0;k<6;k++){const an=k*1.047+p.r*40;g.fillStyle=`rgba(150,255,30,${Math.max(0,p.a).toFixed(2)})`;g.beginPath();g.arc(p.x*W+Math.cos(an)*r*1.3,p.y*H+Math.sin(an)*r*1.3,2*d,0,6.283);g.fill();}}
+    S.pops=S.pops.filter(p=>p.a>0);
+  }else{S.tb.length=0;S.pops.length=0;}
+  g.restore();
 }
 function padAmts(id){
   const F=fx[id],o={};if(!F.on)return o;
@@ -1483,6 +1644,8 @@ function drawScope(id,W,H,d){
   for(let i=0;i<N;i++)pts[i]=B[st+Math.floor(i/N*span)];
   if(A('lpf')>0)pts=movavg(pts,1+Math.round(A('lpf')*16));
   if(A('hpf')>0){const m=movavg(pts,1+Math.round(A('hpf')*16)),h=A('hpf');for(let i=0;i<N;i++)pts[i]=pts[i]*(1-h)+(pts[i]-m[i])*2.5*h;}
+  if(A('aqua')>0)for(let i=0;i<N;i++)pts[i]=pts[i]*(1-A('aqua')*.3)+Math.sin(i*.12+t*2.2)*.12*A('aqua');
+  if(A('acid')>0){const k=1+A('acid')*getV('fx','acDrive')/100*8,nk=Math.tanh(k);for(let i=0;i<N;i++)pts[i]=Math.tanh(pts[i]*k*(1+acidEnv))/nk;}
   if(A('ring')>0){const rf=1-2*Math.min(1,A('ring')*1.3);for(let i=0;i<N;i++)pts[i]*=rf*(.6+.4*Math.abs(Math.sin(i*.4+t*9)));}
   if(A('crush')>0){const lv=Math.max(2,Math.round(22*(1-A('crush'))+2)),hold=1+Math.round(A('crush')*9);
     for(let i=0;i<N;i++)pts[i]=(i%hold&&i)?pts[i-1]:Math.round(pts[i]*lv)/lv;}
@@ -1546,7 +1709,7 @@ function drawPad(id){
   g.fillStyle=`rgba(${fgr},.1)`;
   for(let i=1;i<6;i++){g.fillRect(Math.round(i*W/6),0,1,H);g.fillRect(0,Math.round(i*H/6),W,1);}
   const showVid=vshow&&getV(id,'video');
-  if(showVid)drawVideoFx(g,W,H,d,id);
+  if(showVid)drawVideoFx(g,W,H,d,id);else drawScene(g,W,H,d,padAmts(id),id+'b');
   const sc=drawScope(id,W,H,d);if(getV(id,'trace'))g.drawImage(sc,0,0);
   const fs=Math.max(11,Math.min(15,Math.round(Math.min(W,H)/d/16)))*d,pl=k=>{const t=k.trim();return t;};
   const plate=(txt,x,y,align,col)=>{ // text on a solid backing so it reads over the trace
@@ -2114,6 +2277,7 @@ function scopeOver(cv){
 /* ---------- render loop ---------- */
 let lastBeat=-1;const dots=$$('#dots i');
 function frame(){
+  if(ctx){acidTick();bubbleTick();}
   if(fitCanvas(wcan))drawWaveBase();
   syncVideo();
   for(const id in UI.padCan){fitCanvas(UI.padCan[id]);drawPad(id);}
