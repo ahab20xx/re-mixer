@@ -1332,11 +1332,11 @@ const THEMES={
   blue:{cBg:'#0000a8',cFg:'#ffffff',cCur:'#ffff55'},
   grey:{cBg:'#c0c0c0',cFg:'#000000',cCur:'#800000'}
 };
-const SCREENDEF={view:'paper',...THEMES.paper,crt:true,curve:50,scan:50,video:true,trace:true};
+const SCREENDEF={view:'paper',...THEMES.paper,crt:true,curve:50,scan:50,rad:0,video:true,trace:true};
 const SCREENS={
-  viewer:{vfx:'both',vfit:'contain',vcrt:'off',vrot:0,vscope:'none',vgrid:'on',vcA:'',vcB:'',vrain:false},
-  wave:{snap:true,view:'green',cBg:'#000000',cFg:'#33ff66',cCur:'#ffff00',crt:false,curve:30,scan:40},
-  tempo:{view:'green',cBg:'#000000',cFg:'#33ff66',cCur:'#33ff66',crt:false,curve:30,scan:40}
+  viewer:{vfx:'both',vfit:'contain',vcrt:'off',vrad:0,vrot:0,vscope:'none',vgrid:'on',vcA:'',vcB:'',vrain:false},
+  wave:{snap:true,view:'green',cBg:'#000000',cFg:'#33ff66',cCur:'#ffff00',crt:false,curve:30,scan:40,rad:0},
+  tempo:{view:'green',cBg:'#000000',cFg:'#33ff66',cCur:'#33ff66',crt:false,curve:30,scan:40,rad:0}
 };
 const SCREEN_LABELS={pad:['Back','Text','Slider'],wave:['Back','Wave','Playhead'],tempo:['Back','Digits','Lights']};
 const VIEWOPTS=[['paper','Paper'],['green','Green CRT'],['amber','Amber'],['blue','Blue screen'],['grey','Grey'],['custom','Custom']];
@@ -1345,7 +1345,7 @@ function screenRows(id,kind){
   const rows=[{k:'view',l:'Theme',select:VIEWOPTS,ns:id}];
   if(kind==='pad')rows.push({k:'video',l:'Show video',toggle:1,ns:id},{k:'trace',l:'Scope trace',toggle:1,ns:id});
   rows.push({adv:1,l:'Colors',colors:[['cBg',L[0]],['cFg',L[1]],['cCur',L[2]]],ns:id},{adv:1,k:'crt',l:'Old TV',toggle:1,ns:id});
-  if(getV(id,'crt'))rows.push({adv:1,k:'curve',l:'Bubble',min:0,max:100,v:50,f:pct,ns:id},{adv:1,k:'scan',l:'Scanlines',min:0,max:100,v:50,f:pct,ns:id});
+  if(getV(id,'crt'))rows.push({adv:1,k:'curve',l:'Bubble',min:0,max:100,v:50,f:pct,ns:id},{adv:1,k:'scan',l:'Scanlines',min:0,max:100,v:50,f:pct,ns:id},{adv:1,k:'rad',l:'Radiation',min:0,max:100,v:0,f:pct,ns:id});
   return rows;
 }
 const PADDEF={xy:{ax:'glitch',ay:'warble',...SCREENDEF,view:'green',...THEMES.green},xy2:{ax:'lpf',ay:'echo',...SCREENDEF,view:'amber',...THEMES.amber}};
@@ -2436,8 +2436,53 @@ function glassLayer(W,H,d,k){
   g.fillStyle=hg;g.beginPath();g.ellipse(hx,hy,hr*1.5,hr*.8,-.6,0,Math.PI*2);g.fill();g.restore();
   glassCache.set(key,c);return c;
 }
-function crtEnd(out,W,H,d,k,sa){
+// --- Radiation: a camera soaking up rads. Animated grain, colour drained out,
+// --- rolling tracking bands, bursts of static and the odd inverted frame.
+const radT=[];let radTurn=0,radAt=0,radFlash=0,radRoll=0;
+function radTile(i){ // one square of fresh grey snow
+  let c=radT[i];if(!c){c=radT[i]=document.createElement('canvas');c.width=c.height=128;}
+  const g=c.getContext('2d'),im=g.createImageData(128,128),D=im.data;
+  for(let q=0;q<D.length;q+=4){const v=Math.random()*255|0;D[q]=D[q+1]=D[q+2]=v;D[q+3]=255;}
+  g.putImageData(im,0,0);return c;
+}
+function crtRadiation(out,W,H,d,rad){
+  const r=Math.max(0,Math.min(1,rad));if(r<=0)return;
+  const now=performance.now(),t=now/1000;
+  if(!radT[0])for(let i=0;i<4;i++)radTile(i);
+  if(now-radAt>70){radAt=now;radTile(radTurn=(radTurn+1)&3);} // keep refreshing so it never settles into a pattern
+  out.save();
+  // colour drains away as the dose climbs
+  out.globalCompositeOperation='saturation';out.globalAlpha=r*.92;
+  out.fillStyle='hsl(0,0%,50%)';out.fillRect(0,0,W,H);
+  // animated grain: a different tile, nudged to a new offset, every frame
+  const tile=radT[(Math.random()*4)|0],ts=Math.max(96,Math.round(128*d));
+  out.globalCompositeOperation='overlay';out.globalAlpha=.07+r*.28;
+  out.imageSmoothingEnabled=false;
+  for(let y=-((Math.random()*ts)|0);y<H;y+=ts)for(let x=-((Math.random()*ts)|0);x<W;x+=ts)out.drawImage(tile,x,y,ts,ts);
+  out.imageSmoothingEnabled=true;
+  // bursts of static: thin bright tears across the picture
+  out.globalCompositeOperation='lighter';
+  const nb=Math.round(r*7);
+  for(let i=0;i<nb;i++){
+    if(Math.random()>.55)continue;
+    const y=Math.random()*H,h=(1+Math.random()*3)*d;
+    out.globalAlpha=.12+Math.random()*.3*r;out.fillStyle='#fff';out.fillRect(0,y,W,h);
+  }
+  // tracking band rolling slowly up the screen, dragging the picture sideways
+  radRoll=(radRoll+(.12+r*.5)*.016)%1;
+  const by=(1-radRoll)*H,bh=Math.max(6*d,H*(.04+r*.05));
+  out.globalCompositeOperation='source-over';out.globalAlpha=.1+r*.22;
+  out.fillStyle='rgba(255,255,255,.5)';out.fillRect(0,by,W,bh*.35);
+  out.fillStyle='rgba(0,0,0,.7)';out.fillRect(0,by+bh*.35,W,bh*.65);
+  out.globalAlpha=1;
+  // every so often the whole frame flips to negative for a beat or two
+  if(radFlash>0)radFlash--;else if(Math.random()<r*r*.035)radFlash=1+((Math.random()*2)|0);
+  if(radFlash>0){out.globalCompositeOperation='difference';out.fillStyle='#fff';out.fillRect(0,0,W,H);}
+  out.restore();
+}
+function crtEnd(out,W,H,d,k,sa,rad){
   if(sa>0){out.fillStyle=`rgba(0,0,0,${.4*sa})`;const sp=Math.max(2,Math.round(3*d)),sh=Math.max(1,Math.round(d));for(let y=0;y<H;y+=sp)out.fillRect(0,y,W,sh);}
+  if(rad>0)crtRadiation(out,W,H,d,rad);
   const vg=out.createRadialGradient(W/2,H/2,Math.min(W,H)*.3,W/2,H/2,Math.max(W,H)*.75);
   vg.addColorStop(0,'rgba(0,0,0,0)');vg.addColorStop(1,`rgba(0,0,0,${.25+k*2})`);out.fillStyle=vg;out.fillRect(0,0,W,H);
   out.drawImage(glassLayer(W,H,d,k),0,0);
@@ -2483,7 +2528,7 @@ function drawPad(id){
   // cursor drawn after the warp, at its warped position
   const x1=.5+(F.gx-.5)*(1-k*Math.pow(F.gy*2-1,2)),y1=.5+(F.gy-.5)*(1-k*Math.pow(x1*2-1,2));
   drawCross(out,W,H,d,F,cur,x1,y1);
-  crtEnd(out,W,H,d,k,getV(id,'scan')/100);
+  crtEnd(out,W,H,d,k,getV(id,'scan')/100,(+getV(id,'rad')||0)/100);
 }
 function drawGate(){
   const c=UI.gateCan;if(!c||!c.width)return;
@@ -2927,7 +2972,7 @@ const MENUS={
   pd:[{k:'pRate',l:'Rate',opts:[['1/8',.5],['1/4',1],['1/2',2]]},{k:'pDepth',l:'Depth',opts:[40,60,80,100].map(v=>[v+'%',v])},{k:'dLow',l:'Duck',opts:[['Light',120],['Med',220],['Heavy',380]]}],
   stut:[{k:'dir',l:'Direction',opts:[['Forward','f'],['Reverse','r'],['Ping-pong','p']]},{k:'range',l:'Range',opts:[3,5,7,12,24].map(v=>['±'+v,v])}],
   tape:[{k:'len',l:'Length',opts:[['½ beat',.5],['1 beat',1],['2 beats',2],['4 beats',4]]},{k:'spin',l:'Spin',opts:[['On',true],['Off',false]]}],
-  viewer:[{k:'vfx',l:'Effects',opts:[['Both pads','both'],['Pad A only','xy'],['Pad B only','xy2'],['None (clean)','none']]},{k:'vfit',l:'View',opts:[['Fit whole frame','contain'],['Fill window','cover']]},{k:'vcrt',l:'Screen',opts:[['Clean','off'],['Old TV (subtle)','soft'],['Old TV (strong)','hard']]},{k:'vrot',l:'Rotate',opts:[['0°',0],['90° ↻',90],['180°',180],['270° ↻',270]]},{k:'vscope',l:'Scope',opts:[['Off','none'],['Pad A','xy'],['Pad B','xy2'],['Both pads','both']]},{k:'vgrid',l:'Grid',opts:[['On','on'],['Off','off']]}],
+  viewer:[{k:'vfx',l:'Effects',opts:[['Both pads','both'],['Pad A only','xy'],['Pad B only','xy2'],['None (clean)','none']]},{k:'vfit',l:'View',opts:[['Fit whole frame','contain'],['Fill window','cover']]},{k:'vcrt',l:'Screen',opts:[['Clean','off'],['Old TV (subtle)','soft'],['Old TV (strong)','hard']]},{k:'vrad',l:'Radiation',opts:[['Off',0],['Trace',25],['Hot',55],['Meltdown',100]]},{k:'vrot',l:'Rotate',opts:[['0°',0],['90° ↻',90],['180°',180],['270° ↻',270]]},{k:'vscope',l:'Scope',opts:[['Off','none'],['Pad A','xy'],['Pad B','xy2'],['Both pads','both']]},{k:'vgrid',l:'Grid',opts:[['On','on'],['Off','off']]}],
   angelM:[{k:'anPlay',l:'Plays',opts:[['Voices + harp','both'],['Voices only','voices'],['Harp only','harp']]},{k:'anType',l:'Voice',opts:[['Choir','choir'],['Glass','glass'],['Warm pad','pad'],['Organ','organ'],['Robot','robot'],['Breathy','breath']]},{k:'anHarm',l:'Harmony',opts:[['Unison','u'],['Fifths','f'],['Triad','t'],['Seventh','s'],['Cluster','c'],['Melody + choir','m']]},{k:'anVert',l:'Up/down',opts:[['Volume swell','swell'],['Vowel','vowel']]}],
   aquaM:[{k:'aqVoice',l:'Voice',opts:[['Bubble','bub'],['Glass','glass'],['Marimba','mar'],['Kalimba','kal'],['Pluck','pluck'],['Soft pad','pad']]},{k:'aqNotes',l:'Notes',opts:[['Chords','c'],['Melody','m'],['Harmony','h']]},{k:'aqOct',l:'Range',opts:[['Low',-12],['Mid',0],['High',12]]}],
   acidM:[{k:'acPat',l:'Scale',opts:[['Song','song'],['Minor pent.','pent'],['Phrygian','phry'],['Blues','blues'],['Dorian','dorian'],['Root + 5th','octave']]},{k:'acWave',l:'Wave',opts:[['Saw','sawtooth'],['Square','square']]},{k:'acRate',l:'Steps',opts:[['1/8',.5],['1/16',.25],['1/32',.125]]}],
@@ -3416,7 +3461,7 @@ function renderVideoTo(cv,d,key,opt){
   else{const m=getV('viewer','vscope');scopeOver(b,m&&m!=='none'?m:'both');drawScene(bg,W,H,d,a,key+'n');}
   if(crt==='off')return;
   const k=crt==='hard'?.1:.05,sa=crt==='hard'?.7:.35;
-  crtBegin(g,W,H,d);crtWarp(b,g,W,H,d,k,key);crtEnd(g,W,H,d,k,sa);
+  crtBegin(g,W,H,d);crtWarp(b,g,W,H,d,k,key);crtEnd(g,W,H,d,k,sa,(+getV('viewer','vrad')||0)/100);
 }
 function drawViewer(){
   if(vidRec&&recCanvas)renderVideoTo(recCanvas,1,'recv',{contain:true});
