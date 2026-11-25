@@ -1223,7 +1223,7 @@ const FXSPEC={
     {k:'acEnv',l:'Sweep',min:0,max:100,v:70,f:pct},
     {k:'acRate',l:'Steps',chips:[['1/8',.5],['1/16',.25],['1/32',.125]],v:.25},
     {k:'acDrive',l:'Drive',min:0,max:100,v:50,f:pct},
-    {k:'acBub',l:'Toxic bubbles',min:0,max:100,v:60,f:pct},
+    {k:'acBub',l:'Sludge ripples',min:0,max:100,v:60,f:pct},
     {k:'acGoo',l:'Goo',min:0,max:100,v:60,f:pct}],
   pitch:[{h:'PITCH'},
     {k:'pMode',l:'Mode',chips:[['Speed','s'],['Keep tempo','k'],['Keep pitch','t']],v:'k'},
@@ -1839,19 +1839,30 @@ function drawScene(g,W,H,d,a,key){
     // goo dripping from the top: one blobby mass (metaballs) that bulges, merges and pinches off into drops
     const ng=Math.round(getV('fx','acGoo')/100*9),gk=Math.min(1,aca*1.5);
     if(ng>0)c.drawImage(gooLayer(S,lw,lh,t,ng,gk),0,0);
-    // toxic bubbles: 4-tone shaded pixel balls that wobble and pop
-    const rate=aca*getV('fx','acBub')/100*16*(1+acidEnv);
-    if(Math.random()<rate*dt)S.tb.push({x:Math.random(),y:1.05,r:.014+Math.random()*.032,v:.08+Math.random()*.2,ph:Math.random()*6,pop:.15+Math.random()*.7});
-    for(const b of S.tb){b.y-=b.v*dt;b.x+=Math.sin(t*2.4+b.ph)*.0015;
-      const bx=b.x*lw,by=b.y*lh,r=Math.max(2,b.r*lm*(1+.1*Math.sin(t*7+b.ph)));
-      pDisc(c,bx,by,r+1,'#1f5a00');pDisc(c,bx,by,r,'#4fc400');pDisc(c,bx-r*.2,by-r*.2,r*.78,'#8cff2a');
-      c.fillStyle='#f4ffc0';c.fillRect(Math.round(bx-r*.5),Math.round(by-r*.5),Math.max(1,Math.round(r*.3)),Math.max(1,Math.round(r*.3)));
-      if(b.y<b.pop){b.dead=1;S.pops.push({x:b.x,y:b.y,r:b.r,a:1});}}
-    S.tb=S.tb.filter(b=>!b.dead&&b.y>-.08);
-    for(const p of S.pops){p.a-=dt*3;if(p.a<=0)continue;const k=1-p.a,r=p.r*lm*(1+k*1.8),cx=p.x*lw,cy=p.y*lh;
-      pRing(c,cx,cy,r,p.a>.5?'#d8ff8a':'#7cff1a');
-      for(let j=0;j<8;j++){const an=j*.785+p.r*40;c.fillStyle=j%2?'#8cff2a':'#f4ffc0';c.fillRect(Math.round(cx+Math.cos(an)*r*1.4),Math.round(cy+Math.sin(an)*r*1.4),2,2);}}
-    S.pops=S.pops.filter(p=>p.a>0);
+    // sludge ripples: slow, thick rings spreading through goo, born on the acid steps
+    const rate=aca*getV('fx','acBub')/100;
+    const step=lenS&&bpm?Math.floor((heardPos()/sr-offSec)/(60/bpm*getV('fx','acRate'))):Math.floor(t*4);
+    if(step!==S.lastStep){S.lastStep=step;if(Math.random()<rate*(.25+acidEnv*.6))S.tb.push({x:.1+Math.random()*.8,y:.25+Math.random()*.7,age:0,life:2.2+Math.random()*1.6,sz:.18+Math.random()*.22});}
+    if(S.tb.length>8)S.tb.splice(0,S.tb.length-8);
+    if(S.tb.length){
+      // refraction: the picture is magnified a little inside each ring band, like looking through a ripple
+      let C=S.snap;if(!C||C.width!==W||C.height!==H){C=S.snap=document.createElement('canvas');C.width=W;C.height=H;}
+      const cg=C.getContext('2d');cg.clearRect(0,0,W,H);cg.drawImage(g.canvas,0,0);
+      for(const r of S.tb){r.age+=dt;const k=r.age/r.life,e=1-Math.pow(1-Math.min(1,k),3),R=e*r.sz*M,band=Math.max(6*d,R*.22),cx=r.x*W,cy=r.y*H,fade=1-k;
+        if(R<2*d||fade<=0)continue;
+        const zm=1+.08*fade;g.save();g.beginPath();g.arc(cx,cy,R+band,0,6.283);g.arc(cx,cy,Math.max(0,R-band),0,6.283,true);g.clip();
+        g.globalAlpha=Math.min(1,fade*1.3);g.drawImage(C,cx-cx*zm,cy-cy*zm,W*zm,H*zm);g.restore();}
+      // the rims: chunky pixel rings in slime colours, trailing rings behind (it's thick stuff, so they lag)
+      for(const r of S.tb){const k=r.age/r.life;if(k>=1)continue;const fade=1-k,cx=r.x*lw,cy=r.y*lh;
+        for(let j=0;j<3;j++){const kj=Math.max(0,k-j*.12),e=1-Math.pow(1-kj,3),R=e*r.sz*lm;if(R<1.5)continue;
+          const col=j===0?(fade>.55?'#d8ff8a':'#9cff2a'):j===1?'#4fc400':'#2b7a00';
+          c.globalAlpha=Math.max(0,fade*(1-j*.25));pRing(c,cx,cy,R,'#1f5a00');pRing(c,cx,cy,R-1,col);
+          if(j===0){c.fillStyle='#f4ffc0';for(let a=-2.6;a<-1.2;a+=.35)c.fillRect(Math.round(cx+Math.cos(a)*(R-1)),Math.round(cy+Math.sin(a)*(R-1)),1,1);}}
+        // the splash: a gloop that sinks back down in the middle
+        if(k<.35){const q=1-k/.35,rr=Math.max(1,q*r.sz*lm*.18);c.globalAlpha=q;pDisc(c,cx,cy,rr+1,'#2b7a00');pDisc(c,cx,cy,rr,'#7cff1a');c.fillStyle='#d8ff8a';c.fillRect(Math.round(cx-rr*.4),Math.round(cy-rr*.4),1,1);}
+        c.globalAlpha=1;}
+      S.tb=S.tb.filter(r=>r.age<r.life);
+    }
   }else{S.tb.length=0;S.pops.length=0;}
   // lay the pixel sprites over the picture with hard edges
   g.globalCompositeOperation='source-over';g.imageSmoothingEnabled=false;g.drawImage(L,0,0,lw*px,lh*px);g.imageSmoothingEnabled=true;
