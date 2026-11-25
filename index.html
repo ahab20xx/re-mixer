@@ -1176,7 +1176,7 @@ const SPEC={
 const AXFX=[['','None'],['glitch','Glitch'],['warble','Warble'],['lpf','Low-pass'],['hpf','High-pass'],['crush','Bitcrush'],['echo','Echo'],['reverb','Reverb'],['gate','Gate'],['pup','Pitch up'],['pdn','Pitch down'],['ring','Ring mod'],['smear','Smear'],['aqua','Aqua'],['acid','Acid'],['voices','Angel voices'],['harp','Angel harp']];
 const FXNAME=Object.fromEntries(AXFX);
 const FXCOL={glitch:'#22d3ee',warble:'#a78bfa',lpf:'#60a5fa',hpf:'#34d399',crush:'#f87171',echo:'#fbbf24',reverb:'#c084fc',gate:'#38bdf8',pup:'#9b6bff',pdn:'#6b5bff',pitch:'#9b6bff',ring:'#ff3b8b',smear:'#6bff5a',aqua:'#00e0c0',acid:'#c6ff00',voices:'#ffe08a',harp:'#ffb0e0'};
-const FXGROUP={pup:'pitch',pdn:'pitch'};
+const FXGROUP={pup:'pitch',pdn:'pitch',voices:'angel',harp:'angel'}; // pad axis -> which settings section it uses
 const FXSPEC={
   warble:[{h:'WARBLE'},
     {k:'wow',l:'Wow',min:0,max:200,v:100,f:pct},
@@ -1306,7 +1306,7 @@ function panelRows(id){
   if(SCREENS[id])return [{h:id==='wave'?'WAVEFORM':'TEMPO DISPLAY',c:'#33ff66'},...(id==='wave'?[{k:'snap',l:'Snap trim to beat',toggle:1,ns:'wave'}]:[]),...screenRows(id,id)];
   const a=getV(id,'ax'),b=getV(id,'ay');
   const rows=[{h:'AXES',c:'#e8eaf0'},{k:'ax',l:'X axis →',select:AXFX,ns:id},{k:'ay',l:'Y axis ↑',select:AXFX,ns:id}];
-  [...new Set([a,b].filter(Boolean).map(e=>FXGROUP[e]||e))].forEach(e=>FXSPEC[e].forEach(r=>rows.push(r.h?{...r,c:FXCOL[e]}:{...r,ns:'fx'})));
+  [...new Set([a,b].filter(Boolean).map(e=>FXGROUP[e]||e))].forEach(e=>(FXSPEC[e]||[]).forEach(r=>rows.push(r.h?{...r,c:FXCOL[e]}:{...r,ns:'fx'})));
   rows.push({h:'SCREEN',c:'#808080'},...screenRows(id,'pad'));
   return rows;
 }
