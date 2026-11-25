@@ -55,6 +55,11 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 /* waveform: sound recorder style */
 #wave{position:relative;height:78px;flex:0 0 auto;background:#000;box-shadow:var(--sunken);padding:2px;touch-action:none}
 #wave canvas{position:absolute;inset:2px;width:calc(100% - 4px);height:calc(100% - 4px)}
+/* pan the waveform while zoomed in; hidden when the whole song already fits */
+#wScroll{position:absolute;left:2px;right:2px;bottom:2px;height:11px;background:#c0c0c0;box-shadow:var(--sunken);display:none;z-index:3;touch-action:none}
+#wScroll.on{display:block}
+#wThumb{position:absolute;top:1px;bottom:1px;min-width:14px;background:var(--face);box-shadow:var(--raised);cursor:grab}
+#wThumb:active{cursor:grabbing}
 #waveMsg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#33ff66;font-size:12px;pointer-events:none;text-align:center;padding:0 12px}
 #time.recing{color:#ff3030!important}
 #time{position:absolute;left:5px;bottom:4px;font-size:11px;color:#33ff66;font-family:"Lucida Console",Consolas,monospace;pointer-events:none;background:#000c;padding:0 3px}
@@ -305,6 +310,7 @@ body.editing #edbar{display:flex}
     <canvas id="wcan"></canvas>
     <div id="waveMsg">Click “Load song…” to pick a song or video</div>
     <div id="time">0:00 / 0:00</div>
+    <div id="wScroll"><div id="wThumb"></div></div>
     <div id="zoomBtns"><button class="latch" id="zIn" title="Zoom in">+</button><button class="latch" id="zOut" title="Zoom out">−</button><button class="latch" id="zFit" title="Show whole song">⇔</button></div>
     <button class="latch cfg scr" id="waveCfg" aria-label="Waveform settings"></button>
     <button class="latch on" id="selBtn" aria-label="Selection on/off" title="Use the trim selection">[ ]</button>
@@ -975,7 +981,7 @@ function fitCanvasCap(c,maxPx){ // like fitCanvas, but never more than maxPx pix
   const cw=c.clientWidth,ch=c.clientHeight,d=Math.min(devicePixelRatio||1,Math.sqrt(maxPx/Math.max(1,cw*ch))),w=Math.max(1,Math.round(cw*d)),h=Math.max(1,Math.round(ch*d));
   if(c.width!==w||c.height!==h){c.width=w;c.height=h;}return d;}
 function fitCanvas(c){const d=devicePixelRatio||1,w=Math.round(c.clientWidth*d),h=Math.round(c.clientHeight*d);if(c.width!==w||c.height!==h){c.width=w;c.height=h;return true;}return false;}
-let vS=0,vE=1,vTouched=0;
+let vS=0,vE=1,vTouched=0,wScrollSync=()=>{};
 function drawWaveBase(){
   fitCanvas(wcan);const W=wcan.width,H=wcan.height;
   const fg=getV('wave','cFg'),fr=rgbOf(fg),span=vE-vS;
@@ -991,7 +997,7 @@ function drawWaveBase(){
   const lift=fr.split(',').map(v=>Math.round(+v+(255-v)*.45)).join(',');
   const grd=g.createLinearGradient(0,0,W,0);grd.addColorStop(0,fg);grd.addColorStop(1,`rgb(${lift})`);
   g.drawImage(mk('#fff'),0,0);g.globalCompositeOperation='source-in';g.fillStyle=grd;g.fillRect(0,0,W,H);
-  wBaseHi=hi;
+  wBaseHi=hi;wScrollSync();
   $('#wave').style.background=getV('wave','cBg');
   $('#time').style.color=fg;$('#time').style.background=getV('wave','cBg')+'cc';$('#waveMsg').style.color=fg;
 }
@@ -1000,7 +1006,36 @@ function setView(s0,e0,user){
   let sp=Math.max(minSpan,Math.min(1,e0-s0)),c=(s0+e0)/2;
   let ns=c-sp/2;ns=Math.max(0,Math.min(1-sp,ns));
   if(Math.abs(ns-vS)<1e-9&&Math.abs(ns+sp-vE)<1e-9)return;
-  vS=ns;vE=ns+sp;if(user)vTouched=performance.now();drawWaveBase();
+  vS=ns;vE=ns+sp;if(user)vTouched=performance.now();drawWaveBase();wScrollSync();
+}
+{ // the waveform scrollbar: drag the thumb to slide the view, click the track to page across
+  const bar=$('#wScroll'),th=$('#wThumb');let pid=null,grabX=0,grab0=0;
+  wScrollSync=()=>{
+    const sp=vE-vS,on=lenS&&sp<.999;
+    if(bar.classList.contains('on')!==!!on)bar.classList.toggle('on',!!on);
+    if(!on)return;
+    const w=(sp*100).toFixed(3)+'%',l=(vS*100).toFixed(3)+'%';
+    if(th.style.width!==w)th.style.width=w;
+    if(th.style.left!==l)th.style.left=l;
+  };
+  const slideTo=px=>{const sp=vE-vS,w=bar.clientWidth||1,ns=Math.max(0,Math.min(1-sp,px/w));setView(ns,ns+sp,true);};
+  th.addEventListener('pointerdown',e=>{
+    e.preventDefault();e.stopPropagation();if(pid!=null)return;
+    pid=e.pointerId;th.setPointerCapture(pid);grabX=e.clientX;grab0=vS;
+  });
+  th.addEventListener('pointermove',e=>{
+    if(e.pointerId!==pid)return;e.stopPropagation();
+    const w=bar.clientWidth||1,sp=vE-vS,ns=Math.max(0,Math.min(1-sp,grab0+(e.clientX-grabX)/w));
+    setView(ns,ns+sp,true);
+  });
+  const up=e=>{if(e.pointerId===pid){pid=null;}};
+  th.addEventListener('pointerup',up);th.addEventListener('pointercancel',up);
+  bar.addEventListener('pointerdown',e=>{
+    if(e.target===th)return;
+    e.preventDefault();e.stopPropagation();
+    const r=bar.getBoundingClientRect(),sp=vE-vS,f=(e.clientX-r.left)/(r.width||1);
+    slideTo(((f<vS?vS-sp:vS+sp))*(r.width||1));
+  });
 }
 function zoomAt(f,k,user){const sp=(vE-vS)*k;const r=(f-vS)/(vE-vS);setView(f-r*sp,f-r*sp+sp,user);}
 function drawWave(){
@@ -3273,7 +3308,7 @@ function openPanel(id,slot,keepPinned){
       if(!moreOpen)return;}
     if(r.sub){h+=`<div class="psub"${color?` style="--c:${color}"`:''}>${r.sub}</div>`;return;}
     const x=getV(r.ns,r.k),da=`data-k="${r.k}" data-ns="${r.ns}"`;
-    if(r.select)h+=`<div class="prow">${r.l}<select ${da}>${r.select.map(([v,l])=>`<option value="${v}"${v===x?' selected':''}>${l}</option>`).join('')}</select></div>`;
+    if(r.select)h+=`<div class="prow">${r.l}<select ${da}>${r.select.map(([v,l])=>`<option value="${v}"${String(v)===String(x)?' selected':''}>${l}</option>`).join('')}</select></div>`;
     else if(r.chips)h+=`<div class="prow" style="--c:${color}">${r.l}<div class="pchips">${r.chips.map(([l,v])=>`<button class="chip${v===x?' on':''}" ${da} data-v="${v}">${l}</button>`).join('')}</div></div>`;
     else if(r.toggle)h+=`<div class="prow" style="--c:${color}">${r.l}<div class="pchips"><button class="chip${x?' on':''}" ${da} data-t="1">${x?'ON':'OFF'}</button></div></div>`;
     else if(r.colors)h+=`<div class="prow">${r.l}<div class="swatches">${r.colors.map(([k,l])=>`<label><input type="color" value="${getV(r.ns,k)}" data-k="${k}" data-ns="${r.ns}"><small>${l}</small></label>`).join('')}</div></div>`;
@@ -3281,7 +3316,7 @@ function openPanel(id,slot,keepPinned){
   });
   panel.innerHTML=h;panel.style.setProperty('--c',MODS[id]?MODS[id].c:'#000080');
   const rowOf=el=>rows.find(q=>q.k===el.dataset.k&&q.ns===el.dataset.ns);
-  panel.querySelectorAll('select').forEach(sel=>sel.onchange=()=>{const ns=sel.dataset.ns;if(sel.dataset.k==='view'&&THEMES[sel.value])Object.assign(cfg[ns]=cfg[ns]||{},THEMES[sel.value]);setV(ns,sel.dataset.k,sel.value);openPanel(id,slot,true);});
+  panel.querySelectorAll('select').forEach(sel=>sel.onchange=()=>{const ns=sel.dataset.ns;if(sel.dataset.k==='view'&&THEMES[sel.value])Object.assign(cfg[ns]=cfg[ns]||{},THEMES[sel.value]);setV(ns,sel.dataset.k,sel.value!==''&&!isNaN(+sel.value)?+sel.value:sel.value);openPanel(id,slot,true);});
   panel.querySelectorAll('input[type=color]').forEach(inp=>inp.oninput=()=>{(cfg[inp.dataset.ns]=cfg[inp.dataset.ns]||{}).view='custom';setV(inp.dataset.ns,inp.dataset.k,inp.value);});
   panel.querySelectorAll('input[type=range]').forEach(inp=>inp.oninput=()=>{
     const r=rowOf(inp);inp.nextElementSibling.textContent=r.f(+inp.value);setV(r.ns,r.k,+inp.value);
