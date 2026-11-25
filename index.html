@@ -225,7 +225,9 @@ body.min #viewer{opacity:0;pointer-events:none}
 #panel{position:fixed;z-index:4;background:var(--face);box-shadow:var(--win),3px 3px 0 #0006;padding:3px 3px 6px;display:none;flex-direction:column;overflow:auto;touch-action:pan-y}
 #panel.open{display:flex}
 #panel>*{flex-shrink:0}
-#panel .ph{display:flex;align-items:center;gap:5px;margin:7px 4px 2px;border-bottom:1px solid #808080;box-shadow:0 1px #fff;padding-bottom:2px}
+#panel /* section header */
+.ph .preset{font:inherit;font-size:10px;height:18px;padding:0 6px;margin-left:auto;margin-right:4px;border:0;background:var(--face);box-shadow:var(--raised);cursor:pointer;flex:0 0 auto}.ph .preset:active{box-shadow:var(--sunken)}
+.ph{display:flex;align-items:center;gap:5px;margin:7px 4px 2px;border-bottom:1px solid #808080;box-shadow:0 1px #fff;padding-bottom:2px}
 #panel .ph.tb{margin:0 0 4px;background:var(--title);padding:0 2px 0 4px;height:20px;border:0;box-shadow:none;position:sticky;top:-3px;z-index:1}
 #panel h4{margin:0;font-size:11px;letter-spacing:.3px;flex:1;display:flex;align-items:center;gap:5px;color:#000}
 #panel .ph.tb h4{color:#fff}
@@ -1246,16 +1248,16 @@ const FXSPEC={
     {k:'aqReel',l:'Reel sound',min:0,max:100,v:60,f:pct}],
   acid:[{h:'ACID'},
     {k:'acVis',l:'Visuals only (module)',toggle:1,v:false},
-    {k:'acSyn',l:'Acid synth',min:0,max:100,v:65,f:pct},
+    {k:'acSyn',l:'Acid synth',min:0,max:100,v:40,f:pct},
     {k:'acWave',l:'Wave',chips:[['Saw','sawtooth'],['Square','square']],v:'sawtooth'},
     {k:'acPat',l:'Scale (acid + aqua)',chips:[['Song','song'],['Minor pent.','pent'],['Phrygian','phry'],['Blues','blues'],['Dorian','dorian'],['Root + 5th','octave']],v:'song'},
     {k:'acBusy',l:'Busy',min:0,max:100,v:60,f:pct},
     {k:'acKey',l:'Key (acid + aqua)',min:-1,max:11,v:-1,f:v=>v<0?'Auto ('+NOTE[songKey]+(songAna&&songAna.minor?'m':'')+')':NOTE[v]},
-    {k:'acSong',l:'Song filter',min:0,max:100,v:70,f:pct},
-    {k:'acRes',l:'Resonance',min:0,max:100,v:75,f:pct},
-    {k:'acEnv',l:'Sweep',min:0,max:100,v:70,f:pct},
+    {k:'acSong',l:'Song filter',min:0,max:100,v:45,f:pct},
+    {k:'acRes',l:'Resonance',min:0,max:100,v:50,f:pct},
+    {k:'acEnv',l:'Sweep',min:0,max:100,v:55,f:pct},
     {k:'acRate',l:'Steps',chips:[['1/8',.5],['1/16',.25],['1/32',.125]],v:.25},
-    {k:'acDrive',l:'Drive',min:0,max:100,v:50,f:pct},
+    {k:'acDrive',l:'Drive',min:0,max:100,v:20,f:pct},
     {k:'acBub',l:'Sludge ripples',min:0,max:100,v:60,f:pct},
     {k:'acGoo',l:'Goo',min:0,max:100,v:60,f:pct}],
   angel:[{h:'ANGEL VOICES'},
@@ -1393,7 +1395,7 @@ function pushFX(){
     if(ax)eff[ax]=Math.max(eff[ax],dz(F.gx));
     if(ay)eff[ay]=Math.max(eff[ay],dz(1-F.gy));
   }
-  if(aqLive())eff.aqua=Math.max(eff.aqua,.35+.65*fx.aquaM.gy);
+  if(aqLive())eff.aqua=Math.max(eff.aqua,.35+.65*(1-fx.aquaM.gy)); // finger higher = more water
   if(acLive())eff.acid=Math.max(eff.acid,.9);
   send({t:'xy',on:true,glitch:eff.glitch,warble:eff.warble});
   send({t:'crush',amt:eff.crush*getV('fx','crMax')/100});
@@ -1964,6 +1966,10 @@ function caustics(t,cw,ch,mode){
 // ---- 16-bit sprite helpers (draw on a low-res canvas, scaled up with hard pixels) ----
 function pDisc(c,x,y,r,col){c.fillStyle=col;x=Math.round(x);y=Math.round(y);r=Math.round(r);if(r<1){c.fillRect(x,y,1,1);return;}
   for(let dy=-r;dy<=r;dy++){const w=Math.floor(Math.sqrt(r*r-dy*dy+r*.6));c.fillRect(x-w,y+dy,w*2+1,1);}}
+const RIPK=.42; // ripples lie flat on the goo, seen at the same angle as the falling drop
+function pRingE(c,x,y,rx,ry,col){c.fillStyle=col;x=Math.round(x);y=Math.round(y);const seen=new Set(),n=Math.max(12,Math.ceil(rx*7));
+  for(let k=0;k<n;k++){const a=k/n*6.2832,px=Math.round(x+Math.cos(a)*rx),py=Math.round(y+Math.sin(a)*ry),key=px*4096+py;if(!seen.has(key)){seen.add(key);c.fillRect(px,py,1,1);}}}
+function pDiscE(c,x,y,rx,ry,col){c.fillStyle=col;x=Math.round(x);y=Math.round(y);ry=Math.max(.5,ry);for(let dy=-Math.ceil(ry);dy<=Math.ceil(ry);dy++){const w=Math.floor(rx*Math.sqrt(Math.max(0,1-(dy*dy)/(ry*ry))));if(w>=0)c.fillRect(x-w,y+dy,w*2+1,1);}}
 function pRing(c,x,y,r,col){c.fillStyle=col;x=Math.round(x);y=Math.round(y);r=Math.max(1,Math.round(r));
   const seen=new Set();for(let k=0,n=Math.max(8,Math.ceil(r*7));k<n;k++){const a=k/n*6.2832,px=Math.round(x+Math.cos(a)*r),py=Math.round(y+Math.sin(a)*r),key=px*4096+py;if(!seen.has(key)){seen.add(key);c.fillRect(px,py,1,1);}}}
 function gooLayer(S,lw,lh,t,ng,gk){
@@ -2096,7 +2102,7 @@ function drawScene(g,W,H,d,a,key){
   g.save();
   if(aqa>0){
     // the water level follows how hard Aqua is pushed: everything watery stays below the surface
-    const lev=.22+.72*Math.min(1,aqa),surf=Math.round(H*(1-lev)),sL=Math.round(lh*(1-lev));
+    const lev=a.aquaLevel!=null?Math.max(.06,Math.min(.97,a.aquaLevel)):.22+.72*Math.min(1,aqa),surf=Math.round(H*(1-lev)),sL=Math.round(lh*(1-lev));
     g.save();g.beginPath();g.rect(0,surf,W,H-surf);g.clip();
     g.globalCompositeOperation='multiply';g.fillStyle=`rgba(90,190,215,${(aqa*.75).toFixed(3)})`;g.fillRect(0,surf,W,H-surf);
     g.globalCompositeOperation='source-over';g.fillStyle=`rgba(0,50,80,${(aqa*.22).toFixed(3)})`;g.fillRect(0,surf,W,H-surf);
@@ -2159,16 +2165,16 @@ function drawScene(g,W,H,d,a,key){
       const cg=C.getContext('2d');cg.clearRect(0,0,W,H);cg.drawImage(g.canvas,0,0);
       for(const r of S.tb){r.age+=dt;const k=r.age/r.life,e=1-Math.pow(1-Math.min(1,k),3),R=e*r.sz*M,band=Math.max(6*d,R*.22),cx=r.x*W,cy=r.y*H,fade=1-k;
         if(R<2*d||fade<=0)continue;
-        const zm=1+.08*fade;g.save();g.beginPath();g.arc(cx,cy,R+band,0,6.283);g.arc(cx,cy,Math.max(0,R-band),0,6.283,true);g.clip();
+        const zm=1+.08*fade;g.save();g.beginPath();g.ellipse(cx,cy,R+band,(R+band)*RIPK,0,0,6.283);g.ellipse(cx,cy,Math.max(0,R-band),Math.max(0,R-band)*RIPK,0,6.283,0,true);g.clip();
         g.globalAlpha=Math.min(1,fade*1.3);g.drawImage(C,cx-cx*zm,cy-cy*zm,W*zm,H*zm);g.restore();}
       // the rims: chunky pixel rings in slime colours, trailing rings behind (it's thick stuff, so they lag)
       for(const r of S.tb){const k=r.age/r.life;if(k>=1)continue;const fade=1-k,cx=r.x*lw,cy=r.y*lh;
         for(let j=0;j<3;j++){const kj=Math.max(0,k-j*.12),e=1-Math.pow(1-kj,3),R=e*r.sz*lm;if(R<1.5)continue;
           const col=j===0?(fade>.55?'#d8ff8a':'#9cff2a'):j===1?'#4fc400':'#2b7a00';
-          c.globalAlpha=Math.max(0,fade*(1-j*.25));pRing(c,cx,cy,R,'#1f5a00');pRing(c,cx,cy,R-1,col);
-          if(j===0){c.fillStyle='#f4ffc0';for(let a=-2.6;a<-1.2;a+=.35)c.fillRect(Math.round(cx+Math.cos(a)*(R-1)),Math.round(cy+Math.sin(a)*(R-1)),1,1);}}
+          c.globalAlpha=Math.max(0,fade*(1-j*.25));pRingE(c,cx,cy,R,R*RIPK,'#1f5a00');pRingE(c,cx,cy,R-1,(R-1)*RIPK,col);
+          if(j===0){c.fillStyle='#f4ffc0';for(let a=-2.6;a<-1.2;a+=.3)c.fillRect(Math.round(cx+Math.cos(a)*(R-1)),Math.round(cy+Math.sin(a)*(R-1)*RIPK),1,1);}}
         // the splash: a gloop that sinks back down in the middle
-        if(k<.35){const q=1-k/.35,rr=Math.max(1,q*r.sz*lm*(r.small?.3:.18));c.globalAlpha=q;pDisc(c,cx,cy,rr+1,'#2b7a00');pDisc(c,cx,cy,rr,'#7cff1a');c.fillStyle='#d8ff8a';c.fillRect(Math.round(cx-rr*.4),Math.round(cy-rr*.4),1,1);}
+        if(k<.35){const q=1-k/.35,rr=Math.max(1,q*r.sz*lm*(r.small?.3:.18));c.globalAlpha=q;pDiscE(c,cx,cy,rr+1,(rr+1)*RIPK*1.4,'#2b7a00');pDiscE(c,cx,cy,rr,rr*RIPK*1.4,'#7cff1a');c.fillStyle='#d8ff8a';c.fillRect(Math.round(cx-rr*.4),Math.round(cy-rr*.25),1,1);}
         c.globalAlpha=1;}
       // the drops themselves: stretched while moving fast, with a shadow on the goo that shrinks as they rise
       if(S.drops)for(const p of S.drops){const cx=lw/2,cy=lh/2,hh=p.h*lm,rr=Math.max(1,p.sz*lm),st=Math.min(2.2,1+Math.abs(p.v)*.9);
@@ -2188,6 +2194,7 @@ function padAmts(id){
   const ax=getV(id,'ax'),ay=getV(id,'ay');
   if(ax)o[ax]=Math.max(o[ax]||0,dz(F.gx));
   if(ay)o[ay]=Math.max(o[ay]||0,dz(1-F.gy));
+  if(ay==='aqua')o.aquaLevel=1-F.gy; // the water surface sits at the finger
   return o;
 }
 function movavg(p,w){
@@ -2490,12 +2497,12 @@ function aquaBurst(x,y){
 function drawAquaMod(){
   const c=UI.aquaCan;fitCanvas(c);const W=c.width,H=c.height;if(!W||!H)return;const g=c.getContext('2d'),d=devicePixelRatio||1,F=fx.aquaM;
   const bg=g.createLinearGradient(0,0,0,H);bg.addColorStop(0,'#0a4a6a');bg.addColorStop(1,'#001522');g.fillStyle=bg;g.fillRect(0,0,W,H);
-  drawScene(g,W,H,d,{aqua:F.on?.4+.6*F.gy:.45},'aquaM');
+  drawScene(g,W,H,d,F.on?{aqua:.35+.65*(1-F.gy),aquaLevel:1-F.gy}:{aqua:.45},'aquaM');
   // depth gauge + readout
-  g.fillStyle='rgba(0,20,30,.6)';g.fillRect(W-10*d,0,10*d,H);g.fillStyle='#00e0c0';g.fillRect(W-8*d,H*F.gy,6*d,H-H*F.gy);
+  g.fillStyle='rgba(0,20,30,.6)';g.fillRect(W-10*d,0,10*d,H);g.fillStyle='#00e0c0';const gy=F.on?F.gy:.55;g.fillRect(W-8*d,H*gy,6*d,H-H*gy);
   g.font=`700 ${Math.round(11*d)}px ${canvasFont}`;g.fillStyle='rgba(200,255,250,.9)';g.textAlign='left';
-  g.fillText(`DEPTH ${Math.round((.35+.65*F.gy)*100)}%  CURRENT ${Math.round(F.gx*100)}%`,6*d,14*d);
-  g.fillStyle='rgba(200,255,250,.55)';g.fillText('touch = bubbles · drag = depth / current',6*d,H-6*d);
+  g.fillText(`WATER ${Math.round((1-F.gy)*100)}%  CURRENT ${Math.round(F.gx*100)}%`,6*d,14*d);
+  g.fillStyle='rgba(200,255,250,.55)';g.fillText('touch = bubbles · up/down = water level · sideways = current',6*d,H-6*d);
   if(F.on){const x=F.gx*W,y=F.gy*H,t=performance.now()/1000;g.strokeStyle='rgba(200,255,255,.7)';g.lineWidth=1.5*d;
     for(let k=0;k<3;k++){const r=((t*1.2+k/3)%1)*30*d+6*d;g.globalAlpha=1-((t*1.2+k/3)%1);g.beginPath();g.ellipse(x,y,r,r*.5,0,0,6.283);g.stroke();}g.globalAlpha=1;}
 }
@@ -2986,7 +2993,7 @@ function openPanel(id,slot,keepPinned){
   panelMod=id;if(!keepPinned)panelPinned=false;
   const rows=panelRows(id);let h='',color='';
   rows.forEach((r,i)=>{
-    if(r.h){color=r.c;h+=`<div class="ph${i?'':' tb'}"><h4 style="--sc:${r.c}">${r.h}</h4>${i?'':'<button id="pClose" aria-label="Close">×</button>'}</div>`;return;}
+    if(r.h){color=r.c;h+=`<div class="ph${i?'':' tb'}"><h4 style="--sc:${r.c}">${r.h}</h4><button class="preset" data-sec="${i}" title="Put this effect's settings back to their defaults">Reset</button>${i?'':'<button id="pClose" aria-label="Close">×</button>'}</div>`;return;}
     const x=getV(r.ns,r.k),da=`data-k="${r.k}" data-ns="${r.ns}"`;
     if(r.select)h+=`<div class="prow">${r.l}<select ${da}>${r.select.map(([v,l])=>`<option value="${v}"${v===x?' selected':''}>${l}</option>`).join('')}</select></div>`;
     else if(r.chips)h+=`<div class="prow" style="--c:${color}">${r.l}<div class="pchips">${r.chips.map(([l,v])=>`<button class="chip${v===x?' on':''}" ${da} data-v="${v}">${l}</button>`).join('')}</div></div>`;
@@ -3006,6 +3013,11 @@ function openPanel(id,slot,keepPinned){
     if(c.dataset.t){const nv=!getV(ns,k);c.classList.toggle('on',nv);c.textContent=nv?'ON':'OFF';setV(ns,k,nv);if(k==='crt')openPanel(id,slot,true);}
     else{panel.querySelectorAll(`.chip[data-k="${k}"][data-ns="${ns}"]`).forEach(x=>x.classList.toggle('on',x===c));setV(ns,k,isNaN(+c.dataset.v)?c.dataset.v:+c.dataset.v);}
   });
+  panel.querySelectorAll('.preset').forEach(b=>b.onclick=()=>{ // reset just this section back to its defaults
+    const i0=+b.dataset.sec,touched=new Set();
+    for(let i=i0+1;i<rows.length&&!rows[i].h;i++){const r=rows[i];const ns=(r.ns==='aquaM'||r.ns==='acidM'||r.ns==='angelM')?'fx':r.ns;
+      const keys=r.colors?r.colors.map(c=>c[0]):r.k?[r.k]:[];if(cfg[ns])keys.forEach(k=>{delete cfg[ns][k];});touched.add(ns);}
+    store.set('remixer.cfg',cfg);touched.forEach(ns=>applyCfg(ns));refreshMenus();pushFX();openPanel(id,slot,true);});
   $('#pClose').onclick=closePanel;
   panel.classList.add('open');placePanel(slot);
   $$('.cfg').forEach(b=>b.classList.remove('on'));
@@ -3209,7 +3221,7 @@ function viewerAmts(){
   const m=getV('viewer','vfx');let a={};
   if(m==='both'){const p=padAmts('xy'),q=padAmts('xy2');a={...p};for(const k in q)a[k]=Math.max(a[k]||0,q[k]);}
   else if(m!=='none')a=padAmts(m);
-  if(aqVisLive())a={...a,aqua:Math.max(a.aqua||0,.35+.65*fx.aquaM.gy)};
+  if(aqVisLive())a={...a,aqua:Math.max(a.aqua||0,.35+.65*(1-fx.aquaM.gy)),aquaLevel:1-fx.aquaM.gy};
   if(acVisLive())a={...a,acid:Math.max(a.acid||0,.9)};
   if(fx.angelM.on&&onPage('angelM'))a={...a,angel:1};
   return a;
