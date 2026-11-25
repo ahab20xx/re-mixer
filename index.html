@@ -1245,7 +1245,9 @@ const FXSPEC={
     {k:'aqHook',l:'Hook depth',min:0,max:100,v:55,f:pct},
     {k:'aqWiggle',l:'Worm wiggle',min:0,max:100,v:40,f:pct},
     {k:'aqBiteFx',l:'Bite sound',min:0,max:100,v:70,f:pct},
-    {k:'aqReel',l:'Reel sound',min:0,max:100,v:60,f:pct}],
+    {k:'aqReel',l:'Reel sound',min:0,max:100,v:60,f:pct},
+    {k:'aqReelRate',l:'Reel rhythm',chips:[['1/8',.5],['1/16',.25],['1/32',.125]],v:.25},
+    {k:'aqTwitch',l:'Line twitches',min:0,max:100,v:55,f:pct}],
   acid:[{h:'ACID'},
     {k:'acVis',l:'Visuals only (module)',toggle:1,v:false},
     {k:'acSyn',l:'Acid synth',min:0,max:100,v:40,f:pct},
@@ -2017,17 +2019,35 @@ const FISHPAL=[['#ff8a2a','#ffd8a8','#7a3a00'],['#3ab0ff','#c8ecff','#14508a'],[
 let fNoise=null;
 const fishSnd={
   noise(){if(!fNoise){fNoise=ctx.createBuffer(1,ctx.sampleRate,ctx.sampleRate);const d=fNoise.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;}const n=ctx.createBufferSource();n.buffer=fNoise;return n;},
-  plop(T,a){const o=ctx.createOscillator(),g=ctx.createGain();o.frequency.setValueAtTime(280,T);o.frequency.exponentialRampToValueAtTime(70,T+.2);g.gain.setValueAtTime(.5*a,T);g.gain.exponentialRampToValueAtTime(.001,T+.25);o.connect(g).connect(aq.sfx);o.start(T);o.stop(T+.3);},
-  splash(T,a,len=.35){const n=this.noise(),bp=ctx.createBiquadFilter(),g=ctx.createGain();bp.type='bandpass';bp.frequency.setValueAtTime(1600,T);bp.frequency.exponentialRampToValueAtTime(500,T+len);bp.Q.value=.7;
-    g.gain.setValueAtTime(0,T);g.gain.linearRampToValueAtTime(.45*a,T+.01);g.gain.exponentialRampToValueAtTime(.001,T+len);n.connect(bp).connect(g).connect(aq.sfx);n.start(T,Math.random()*.5);n.stop(T+len+.05);},
+  plop(T,a){ // a soft droplet: a little rising bloop, muffled, with a gentle low thump
+    const o=ctx.createOscillator(),lp=ctx.createBiquadFilter(),g=ctx.createGain(),o2=ctx.createOscillator(),g2=ctx.createGain();
+    o.type='sine';o.frequency.setValueAtTime(330,T);o.frequency.exponentialRampToValueAtTime(820,T+.09);lp.type='lowpass';lp.frequency.value=1400;
+    g.gain.setValueAtTime(0,T);g.gain.linearRampToValueAtTime(.22*a,T+.008);g.gain.exponentialRampToValueAtTime(.001,T+.16);
+    o2.type='sine';o2.frequency.setValueAtTime(130,T);o2.frequency.exponentialRampToValueAtTime(70,T+.15);g2.gain.setValueAtTime(.2*a,T);g2.gain.exponentialRampToValueAtTime(.001,T+.18);
+    o.connect(lp).connect(g).connect(aq.sfx);o2.connect(g2).connect(aq.sfx);g.connect(aq.bubDel);o.start(T);o2.start(T);o.stop(T+.2);o2.stop(T+.2);},
+  splash(T,a,len=.5){ // a soft wash of water: low, rounded noise, with a watery echo
+    const n=this.noise(),lp=ctx.createBiquadFilter(),g=ctx.createGain();lp.type='lowpass';lp.frequency.setValueAtTime(1100,T);lp.frequency.exponentialRampToValueAtTime(380,T+len);lp.Q.value=.4;
+    g.gain.setValueAtTime(0,T);g.gain.linearRampToValueAtTime(.32*a,T+.03);g.gain.exponentialRampToValueAtTime(.001,T+len);
+    n.connect(lp).connect(g).connect(aq.sfx);g.connect(aq.bubDel);n.start(T,Math.random()*.5);n.stop(T+len+.05);},
   gulp(T,a){ // the song itself does a watery gulp: a quick pitch dip through the aqua delay, and a muffled dip
-    if(!aq.del)return;const d0=aq.del.delayTime.value;aq.del.delayTime.cancelScheduledValues(T);aq.del.delayTime.setTargetAtTime(.012+.035*a,T,.05);aq.del.delayTime.setTargetAtTime(.012,T+.22,.08);
+    if(!aq.del)return;aq.del.delayTime.cancelScheduledValues(T);aq.del.delayTime.setTargetAtTime(.012+.035*a,T,.05);aq.del.delayTime.setTargetAtTime(.012,T+.22,.08);
     const f0=aq.lp.frequency.value;aq.lp.frequency.setTargetAtTime(Math.max(250,f0*.25),T,.04);aq.lp.frequency.setTargetAtTime(f0,T+.3,.12);},
-  reel(T,dur,a){ // ratchet clicks that speed up, over a rising whine
-    let t=0,gap=.1;while(t<dur){const tt=T+t,o=ctx.createOscillator(),g=ctx.createGain();o.type='square';o.frequency.value=1700+Math.random()*300;g.gain.setValueAtTime(.12*a,tt);g.gain.exponentialRampToValueAtTime(.001,tt+.012);o.connect(g).connect(aq.sfx);o.start(tt);o.stop(tt+.02);t+=gap;gap=Math.max(.022,gap*.9);}
-    const w=ctx.createOscillator(),lp=ctx.createBiquadFilter(),g=ctx.createGain();w.type='sawtooth';w.frequency.setValueAtTime(160,T);w.frequency.exponentialRampToValueAtTime(760,T+dur);lp.type='lowpass';lp.frequency.value=1800;
-    g.gain.setValueAtTime(0,T);g.gain.linearRampToValueAtTime(.06*a,T+.2);g.gain.linearRampToValueAtTime(0,T+dur+.05);w.connect(lp).connect(g).connect(aq.sfx);w.start(T);w.stop(T+dur+.1);}
+  click(T,a){ // one soft reel click: a damp little tick, more wood than beep
+    const n=this.noise(),bp=ctx.createBiquadFilter(),g=ctx.createGain();bp.type='bandpass';bp.frequency.value=2400+Math.random()*500;bp.Q.value=3;
+    g.gain.setValueAtTime(.3*a,T);g.gain.exponentialRampToValueAtTime(.001,T+.025);n.connect(bp).connect(g).connect(aq.sfx);n.start(T,Math.random()*.8);n.stop(T+.04);},
+  drag(T,dur,a){ // the line pulling through the water under the clicks: soft, rising
+    const n=this.noise(),bp=ctx.createBiquadFilter(),g=ctx.createGain();bp.type='bandpass';bp.Q.value=6;bp.frequency.setValueAtTime(300,T);bp.frequency.exponentialRampToValueAtTime(900,T+dur);
+    g.gain.setValueAtTime(0,T);g.gain.linearRampToValueAtTime(.12*a,T+.15);g.gain.linearRampToValueAtTime(0,T+dur);n.connect(bp).connect(g).connect(aq.sfx);n.start(T,Math.random()*.3);n.stop(T+dur+.05);},
+  reel(T,dur,a){ // clicks locked to the song's grid (Reel rhythm), accents on the beat, over the soft drag
+    const times=gridTimes(T,dur,getV('fx','aqReelRate'));times.forEach((tt,i)=>this.click(tt,a*(i%4===0?1:.65)));this.drag(T,dur,a);}
 };
+function gridTimes(T,dur,div){ // audio-clock times of the song's grid steps (in beats: .25 = 16ths) between T and T+dur
+  if(!lenS||!bpm||!playing||rateR<=.05){const out=[];for(let t=0;t<dur;t+=.09)out.push(T+t);return out;}
+  const [pos,t0]=schedBase(),stepSec=60/bpm*div,rel=pos/sr-offSec,out=[];
+  let k=Math.ceil((rel+(T-t0)*rateR)/stepSec);
+  for(let n=0;n<64;n++,k++){const tt=t0+(k*stepSec-rel)/rateR;if(tt>T+dur)break;if(tt>=T-.005)out.push(tt);}
+  return out;
+}
 function fishTick(){
   const now=performance.now(),dt=Math.min(.1,(now-(FISH.at||now))/1000);FISH.at=now;
   const vis=eff.aqua>0||(typeof aqVisLive==='function'&&aqVisLive());if(!vis){FISH.phase='idle';FISH.hooked=null;FISH.eaten=false;FISH.hd=null;if(aq.wlfoG&&ctx)aq.wlfoG.gain.setTargetAtTime(0,ctx.currentTime,.1);return;}
@@ -2048,8 +2068,12 @@ function fishTick(){
   }
   // bites
   if(lineOn&&fishOn&&FISH.phase==='idle'){FISH.cool-=dt;FISH.hd+=(hookT-FISH.hd)*Math.min(1,dt*2);
-    if(FISH.cool<=0&&!FISH.fish.some(f=>f.st==='go')&&Math.random()<getV('fx','aqBite')/100*dt*.6){let best=null,bd=9;for(const f of FISH.fish){if(f.st!=='swim'||f.x<0||f.x>1)continue;const d=Math.hypot(f.x-hx,f.d-FISH.hd);if(d<bd){bd=d;best=f;}}if(best)best.st='go';}}
+    if(FISH.cool<=0&&!FISH.fish.some(f=>f.st==='go')&&Math.random()<getV('fx','aqBite')/100*dt*1.1){let best=null,bd=9;for(const f of FISH.fish){if(f.st!=='swim'||f.x<0||f.x>1)continue;const d=Math.hypot(f.x-hx,f.d-FISH.hd);if(d<bd){bd=d;best=f;}}if(best)best.st='go';}}
   else if(FISH.phase==='idle')FISH.hd+=(hookT-FISH.hd)*Math.min(1,dt*2);
+  // line twitches: on downbeats, a short rhythmic reel and the hook lifts a little, like jigging the line
+  if(lineOn&&FISH.phase==='idle'&&lenS&&bpm&&playing){const bar=Math.floor((heardPos()/sr-offSec)/(60/bpm*2));
+    if(bar!==FISH.lastBar){FISH.lastBar=bar;if(Math.random()<getV('fx','aqTwitch')/100*.8){FISH.hd=Math.max(.04,FISH.hd-.07);FISH.dip=Math.max(FISH.dip,.35);
+      if(audible){const beat=60/bpm/Math.max(.05,rateR);fishSnd.reel(ctx.currentTime+.01,beat*(Math.random()<.5?.5:1),getV('fx','aqReel')/100*amp*.7);}}}}
   const H=FISH.hooked;
   if(FISH.phase==='hooked'){FISH.t+=dt;if(H){H.x=hx+(Math.random()-.5)*.03;H.d=FISH.hd+(Math.random()-.5)*.02;if(Math.random()<.3)H.dir=-H.dir;}FISH.dip=Math.max(FISH.dip,.6);
     if(FISH.t>1.2){FISH.phase='reel';FISH.t=0;FISH.d0=FISH.hd;if(audible)fishSnd.reel(ctx.currentTime,1.4,getV('fx','aqReel')/100*amp);}}
@@ -2057,7 +2081,7 @@ function fishTick(){
     if(FISH.t>=1.4){FISH.phase='jump';FISH.t=0;if(H){H.st='jump';H.vy=-1.1;H.y=0;H.vx=(Math.random()<.5?-1:1)*.25;}splashAt(hx,10);if(audible)fishSnd.splash(ctx.currentTime,getV('fx','aqBiteFx')/100*amp,.45);}}
   else if(FISH.phase==='jump'){FISH.t+=dt;if(H){H.vy+=2.6*dt;H.y+=H.vy*dt;H.x+=H.vx*dt;H.d=H.y;}
     if(FISH.t>.85){if(H){splashAt(H.x,8);if(audible)fishSnd.plop(ctx.currentTime,getV('fx','aqBiteFx')/100*amp*.6);Object.assign(H,{st:'swim',x:H.vx>0?1.2:-.2,d:.2+Math.random()*.7,dir:H.vx>0?-1:1,pal:Math.floor(Math.random()*FISHPAL.length)});}
-      FISH.phase='idle';FISH.hooked=null;FISH.eaten=false;FISH.hd=0;FISH.cool=3+Math.random()*4;}}
+      FISH.phase='idle';FISH.hooked=null;FISH.eaten=false;FISH.hd=0;FISH.cool=1.5+Math.random()*2.5;}}
   for(const p of FISH.spl){p.vy+=2.4*dt;p.x+=p.vx*dt;p.y+=p.vy*dt;p.l-=dt*1.2;}FISH.spl=FISH.spl.filter(p=>p.l>0);
 }
 function splashAt(x,n){for(let i=0;i<n;i++)FISH.spl.push({x,y:0,vx:(Math.random()-.5)*.35,vy:-.6-Math.random()*.8,l:1});}
