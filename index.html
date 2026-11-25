@@ -134,8 +134,7 @@ font-weight:700;font-size:13px;letter-spacing:.3px;touch-action:none;text-align:
 .acsteps b{height:22px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;background:#102000;color:#6a8f40;box-shadow:var(--sunken);cursor:pointer;user-select:none;overflow:hidden}
 .acsteps b.now{background:#c6ff00;color:#000}.acsteps b.acc{color:#d8ff8a}.acsteps b.mute{background:#300;color:#a55}.acsteps b.rest{color:#3a5020}
 .acmain{flex:1;display:flex;gap:4px;min-height:0}.acmain .xyc{flex:1}
-.visbtn{position:absolute;top:20px;right:14px;z-index:2;font:inherit;font-size:10px;font-weight:700;padding:2px 6px;background:var(--face);box-shadow:var(--raised);border:0;color:#000;cursor:pointer}
-.visbtn.on{box-shadow:var(--sunken);background:var(--dither);color:#000080}
+.visbtn.on{box-shadow:var(--sunken)!important;background:var(--dither)!important;color:#000080}
 .acbtns{display:flex;flex-direction:column;gap:4px;width:74px}.acbtns .pad{flex:1;min-height:0;font-size:12px}
 .slot.tall .ppads{grid-template-columns:1fr 1fr}
 .ppads .pad{font-size:13px;min-height:28px}
@@ -622,6 +621,7 @@ registerProcessor('remixer',Remixer);
 <script>
 (()=>{
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const EYE='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M1.5 12S5.5 5 12 5s10.5 7 10.5 7-4 7-10.5 7S1.5 12 1.5 12z"/><circle cx="12" cy="12" r="3.4" fill="currentColor"/></svg>';
 const LOCK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
 $$('.latch[data-fx]').forEach(b=>b.innerHTML=LOCK);
 
@@ -2106,16 +2106,16 @@ const MODS={
     mb.innerHTML='<div class="pad big">STOP</div>';UI.pads.tape=mb.firstChild;toggleable(UI.pads.tape,'tape',setTape);}},
   rev:{name:'REVERSE',ic:'#ffe000',c:'var(--rev)',latch:'rev',narrow:true,build(mb){
     mb.innerHTML='<div class="pad big">REVERSE</div>';UI.pads.rev=mb.firstChild;toggleable(UI.pads.rev,'rev',setRev);}},
-  aquaM:{name:'AQUA',ic:'#00b0c0',c:'#00e0c0',latch:'aquaM',build(mb){
-    mb.innerHTML='<div class="xyc"><canvas></canvas><button class="visbtn" data-k="aqVis" title="Only the picture: no sound changes">VISUAL ONLY</button></div>';const c=mb.querySelector('canvas');UI.aquaCan=c;bindVisBtn(mb);
+  aquaM:{name:'AQUA',ic:'#00b0c0',c:'#00e0c0',latch:'aquaM',vis:'aqVis',build(mb){
+    mb.innerHTML='<div class="xyc"><canvas></canvas></div>';const c=mb.querySelector('canvas');UI.aquaCan=c;bindVisBtn(mb);
     bindXY(mb.firstChild,c,fx.aquaM,()=>pushFX(),'aquaM');
     mb.firstChild.addEventListener('pointerdown',e=>{ // every touch lets out a burst of bubbles: left = low notes, right = high
       const r=c.getBoundingClientRect(),x=clamp((e.clientX-r.left)/r.width),y=clamp((e.clientY-r.top)/r.height);
       aquaBurst(x,y);
     });}},
-  acidM:{name:'ACID 303',ic:'#60c000',c:'#c6ff00',latch:'acidM',build(mb){
+  acidM:{name:'ACID 303',ic:'#60c000',c:'#c6ff00',latch:'acidM',vis:'acVis',build(mb){
     mb.innerHTML=`<div class="acid303"><div class="acsteps">${Array.from({length:16},(_,i)=>`<b data-i="${i}"></b>`).join('')}</div>
-      <div class="acmain"><div class="xyc"><canvas></canvas><button class="visbtn" data-k="acVis" title="Only the picture: no sound changes">VISUAL ONLY</button></div><div class="acbtns"><div class="pad" data-h="acc">ACCENT</div><div class="pad" data-h="sld">SLIDE</div></div></div></div>`;
+      <div class="acmain"><div class="xyc"><canvas></canvas></div><div class="acbtns"><div class="pad" data-h="acc">ACCENT</div><div class="pad" data-h="sld">SLIDE</div></div></div></div>`;
     bindVisBtn(mb);const c=mb.querySelector('canvas');UI.acidCan=c;UI.acidLeds=[...mb.querySelectorAll('.acsteps b')];
     bindXY(mb.querySelector('.xyc'),c,fx.acidM,()=>pushFX(),'acidM');
     UI.acidLeds.forEach(b=>b.addEventListener('click',()=>{const i=+b.dataset.i;fx.acidM.mute[i]=!fx.acidM.mute[i];acidLedKey='';}));
@@ -2129,7 +2129,7 @@ const MODS={
     UI.gateCan=mb.querySelector('canvas');bindXY(mb.firstChild,UI.gateCan,fx.gate,gateFromXY,'gate');}}
 };
 function bindVisBtn(mb){ // VISUAL ONLY toggle inside a module screen
-  const b=mb.querySelector('.visbtn'),k=b.dataset.k,sync=()=>b.classList.toggle('on',!!getV('fx',k));sync();
+  const b=(mb.parentNode||mb).querySelector('.visbtn');if(!b)return;const k=b.dataset.k,sync=()=>b.classList.toggle('on',!!getV('fx',k));sync();
   b.addEventListener('pointerdown',e=>e.stopPropagation());
   b.addEventListener('click',e=>{e.stopPropagation();setV('fx',k,!getV('fx',k));sync();pushFX();});
   setInterval(sync,500);
@@ -2163,11 +2163,14 @@ function drawAcidMod(){
   drawScene(g,W,H,d,{acid:F.on?.55:.25},'acidM');
   g.fillStyle='rgba(0,0,0,.45)';g.fillRect(0,0,W,H);
   // the filter's response: where the cutoff sits and how sharp the resonant peak is (moves with every step)
-  const fc0=80*Math.pow(100,F.gx),res=1-F.gy,Q=.7+res*14,fc=fc0*Math.pow(2,(F.on?acidEnv:0)*2.5),ty=v=>H*.15+(1-(v+30)/54)*H*.75;
-  g.beginPath();for(let i=0;i<=W;i+=2){const f=20*Math.pow(1000,i/W),r=f/fc,mag=1/Math.sqrt(Math.pow(1-r*r,2)+Math.pow(r/Q,2)),db=Math.max(-30,Math.min(24,20*Math.log10(mag)));i?g.lineTo(i,ty(db)):g.moveTo(i,ty(db));}
-  g.lineTo(W,H);g.lineTo(0,H);g.closePath();g.fillStyle='rgba(160,255,30,.14)';g.fill();
-  g.beginPath();for(let i=0;i<=W;i+=2){const f=20*Math.pow(1000,i/W),r=f/fc,mag=1/Math.sqrt(Math.pow(1-r*r,2)+Math.pow(r/Q,2)),db=Math.max(-30,Math.min(24,20*Math.log10(mag)));i?g.lineTo(i,ty(db)):g.moveTo(i,ty(db));}
-  g.save();g.strokeStyle='#c6ff00';g.lineWidth=2.5*d;g.shadowColor='#9f0';g.shadowBlur=12*d;g.stroke();g.restore();
+  const res=1-F.gy,ty=v=>H*.12+(1-(v+30)/54)*H*.8,fromY=y=>(1-(y-H*.12)/(H*.8))*54-30;
+  // target: peak under the finger (x = cutoff, y = how tall the resonant peak is), eased so it glides
+  const tFc=20*Math.pow(1000,F.gx),tQ=Math.max(.75,Math.min(16,Math.pow(10,Math.max(-2,Math.min(24,fromY(F.gy*H)))/20)));
+  const AV=drawAcidMod.v||(drawAcidMod.v={fc:tFc,Q:tQ,env:0});AV.fc*=Math.pow(tFc/AV.fc,.3);AV.Q+=(tQ-AV.Q)*.3;AV.env+=((F.on?acidEnv:0)-AV.env)*.25;
+  const curve=(fc,Q)=>{g.beginPath();for(let i=0;i<=W;i+=2){const f=20*Math.pow(1000,i/W),r=f/fc,mag=1/Math.sqrt(Math.pow(1-r*r,2)+Math.pow(r/Q,2)),db=Math.max(-30,Math.min(24,20*Math.log10(mag)));i?g.lineTo(i,ty(db)):g.moveTo(i,ty(db));}};
+  if(AV.env>.02){curve(AV.fc*Math.pow(2,AV.env*1.6),AV.Q);g.strokeStyle=`rgba(198,255,0,${(.15+.25*AV.env).toFixed(2)})`;g.lineWidth=1.5*d;g.stroke();} // ghost: the squelch on each step
+  curve(AV.fc,AV.Q);g.lineTo(W,H);g.lineTo(0,H);g.closePath();g.fillStyle='rgba(160,255,30,.14)';g.fill();
+  curve(AV.fc,AV.Q);g.save();g.strokeStyle='#c6ff00';g.lineWidth=2.5*d;g.shadowColor='#9f0';g.shadowBlur=12*d;g.stroke();g.restore();
   g.font=`700 ${Math.round(11*d)}px ${canvasFont}`;g.fillStyle='#d8ff8a';g.textAlign='left';
   g.fillText(`SWEEP ${Math.round(F.gx*100)}%  RES ${Math.round(res*100)}%`,6*d,14*d);
   g.fillStyle='rgba(216,255,138,.55)';g.fillText('drag: ← → sweep · ↑ ↓ resonance',6*d,H-6*d);
@@ -2247,7 +2250,7 @@ function buildLayout(){
     const s=document.createElement('div');s.className='slot';
     s.style.gridColumn='span '+e.w;s.style.gridRow='span '+e.h;
     const c=document.createElement('div');c.className='card';c.style.setProperty('--c',M.c);
-    c.innerHTML=`<div class="ch"><b>${M.name}</b>${(SPEC[id]||PADDEF[id])?`<button class="latch cfg" aria-label="Settings">${CFGSVG}</button>`:''}${M.latch?`<button class="latch" data-fx="${M.latch}">${LOCK}</button>`:''}</div>${MENUS[id]?`<div class="mbar" data-id="${id}">${MENUS[id].map((m,j)=>`<button class="mi" data-j="${j}"></button>`).join('')}</div>`:''}<div class="mb"></div>`;
+    c.innerHTML=`<div class="ch"><b>${M.name}</b>${M.vis?`<button class="latch visbtn" data-k="${M.vis}" aria-label="Visuals only" title="Visuals only: the picture reacts, the sound stays untouched">${EYE}</button>`:''}${(SPEC[id]||PADDEF[id])?`<button class="latch cfg" aria-label="Settings">${CFGSVG}</button>`:''}${M.latch?`<button class="latch" data-fx="${M.latch}">${LOCK}</button>`:''}</div>${MENUS[id]?`<div class="mbar" data-id="${id}">${MENUS[id].map((m,j)=>`<button class="mi" data-j="${j}"></button>`).join('')}</div>`:''}<div class="mb"></div>`;
     c.querySelectorAll('.mi').forEach(b=>b.onclick=()=>openMenu(b,id,+b.dataset.j));
     c.style.setProperty('--ic',e.ic||M.ic);
     s.appendChild(c);UI.cards[id]=c;M.build(c.querySelector('.mb'));
