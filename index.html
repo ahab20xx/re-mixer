@@ -206,6 +206,7 @@ body.min #viewer{opacity:0;pointer-events:none}
 #chCan{display:block;width:100%;height:300px;background:#000;box-shadow:var(--sunken);touch-action:none;cursor:grab;margin-top:3px}
 #chInfo{font-size:11px;min-height:30px;padding:4px 2px;line-height:1.35}
 .chbtns{display:flex;gap:4px;align-items:center}.chbtns span{flex:1;font-size:10px;color:#444}
+.chbtns button.on{box-shadow:var(--sunken);background:var(--dither);font-weight:700}
 .chbtns button{font:inherit;font-size:12px;height:24px;padding:0 10px;border:0;background:var(--face);box-shadow:var(--raised);cursor:pointer}.chbtns button:active{box-shadow:var(--sunken)}
 .vrain{display:inline-flex;align-items:center}.vrain i{display:inline-block;width:14px;height:11px;margin-right:4px;border:1px solid #000;background:linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f)}
 .vrain.on{box-shadow:var(--sunken)!important;background:var(--dither)!important}
@@ -331,7 +332,7 @@ body.editing #edbar{display:flex}
 
 <div id="chaos"><div class="tbar"><span class="ticon"></span><span id="chTitle">Chaos toy</span><span style="flex:1"></span><span class="tbtns"><i id="chClose" role="button" aria-label="Close">✕</i></span></div>
   <canvas id="chCan"></canvas><div id="chInfo"></div>
-  <div class="chbtns"><span>drag to spin · fling for chaos · double-click to scramble</span><button id="chScr">Scramble</button><button id="chReset">Reset</button></div></div>
+  <div class="chbtns"><span>drag to spin · fling for chaos · double-click to scramble</span><button id="chLive" class="on" title="Play the effect while the toy spins">Live</button><button id="chScr">Scramble</button><button id="chReset">Reset</button></div></div>
 <div id="viewer">
   <div class="tbar"><span class="ticon"><svg viewBox="0 0 16 16"><rect x="1.5" y="3" width="13" height="10" fill="#000" stroke="#fff" stroke-width="1"/><path d="M6.5 5.5v5l4-2.5z" fill="#33ff66"/></svg></span><span id="vTitle">Video viewer</span><span style="flex:1"></span><span class="tbtns"><i role="button" aria-label="Minimize">_</i><i role="button" aria-label="Maximize">□</i><i role="button" aria-label="Close">×</i></span></div>
   <div class="mbar" data-id="viewer"><button class="mi" data-j="0"></button><button class="mi" data-j="1"></button><button class="mi" data-j="2"></button><button class="mi" data-j="3"></button><button class="mi" data-j="4"></button><button class="mi" data-j="5"></button><span style="flex:1"></span><button class="mi vrain" title="Psychedelic: cycle the scope, grid and markers through rainbow colours"><i></i>Rainbow</button><span class="vsep"></span><button class="mi vlk" data-p="xy" title="Lock Pad A so touching the viewer doesn't move it"></button><button class="mi vlatch" data-p="xy" title="Pin Pad A's effects on"></button><label class="mi vcol" data-p="xy" title="Pad A scope colour in the viewer"><i></i><input type="color"></label><span class="vsep"></span><button class="mi vlk" data-p="xy2" title="Lock Pad B so touching the viewer doesn't move it"></button><button class="mi vlatch" data-p="xy2" title="Pin Pad B's effects on"></button><label class="mi vcol" data-p="xy2" title="Pad B scope colour in the viewer"><i></i><input type="color"></label></div>
@@ -2560,9 +2561,24 @@ const CHAOS_STYLE={
   acidM:{mesh:'sphere',fx:'goo',col:'#9cff2a'},angelM:{mesh:'torus',fx:'halo',col:'#ffd860'}
 };
 const CH={open:false};
+// vaporwave palettes for each toy: [bright, deep]
+const VAPOR={xy:['#00f0ff','#ff4fd8'],xy2:['#ffb86b','#b967ff'],stut:['#ff2fa8','#05ffa1'],tape:['#ff9e7a','#7b5cff'],pd:['#5cffc7','#ff71ce'],pitch:['#fffb96','#b967ff'],aquaM:['#01cdfe','#b967ff'],acidM:['#b6ff3a','#ff71ce'],angelM:['#fffb96','#ff9ff3']};
+function chaosSky(g,W,H,d,t){ // sunset sky, striped sun, glowing grid floor, a few stars
+  const hz=H*.64,sky=g.createLinearGradient(0,0,0,hz);sky.addColorStop(0,'#12002e');sky.addColorStop(.55,'#4a0e6b');sky.addColorStop(1,'#ff5fb4');g.fillStyle=sky;g.fillRect(0,0,W,hz);
+  for(let i=0;i<26;i++){const x=hash1(i)*W,y=hash1(i+40)*hz*.6,tw=.4+.6*Math.abs(Math.sin(t*1.5+i));g.fillStyle=`rgba(255,240,255,${(.6*tw).toFixed(2)})`;g.fillRect(x,y,1.5*d,1.5*d);}
+  const R=Math.min(W,H)*.2,sx=W/2,sy=hz-R*.25,sun=g.createLinearGradient(0,sy-R,0,sy+R);sun.addColorStop(0,'#fffb96');sun.addColorStop(.5,'#ff9e7a');sun.addColorStop(1,'#ff2fa8');
+  g.save();g.beginPath();g.arc(sx,sy,R,0,6.283);g.clip();g.fillStyle=sun;g.fillRect(sx-R,sy-R,R*2,R*2);
+  g.fillStyle='#4a0e6b';for(let k=0;k<6;k++){const y=sy+R*(.05+k*.17),h=R*(.03+k*.025);g.fillRect(sx-R,y,R*2,h);}g.restore(); // the stripes
+  const fl=g.createLinearGradient(0,hz,0,H);fl.addColorStop(0,'#2b0049');fl.addColorStop(1,'#07001a');g.fillStyle=fl;g.fillRect(0,hz,W,H-hz);
+  g.save();g.lineWidth=Math.max(1,d);g.shadowColor='#ff4fd8';g.shadowBlur=6*d;g.strokeStyle='rgba(255,79,216,.75)';
+  const sc=(t*.35+CH.yaw*.15)%1;for(let k=0;k<12;k++){const z=(k+1-sc)/12,y=hz+(H-hz)*Math.pow(z,2.2);g.beginPath();g.moveTo(0,y);g.lineTo(W,y);g.stroke();}
+  g.strokeStyle='rgba(1,205,254,.6)';g.shadowColor='#01cdfe';for(let i=-10;i<=10;i++){g.beginPath();g.moveTo(W/2+i*W*.02,hz);g.lineTo(W/2+i*W*.16,H);g.stroke();}g.restore();
+  g.strokeStyle='rgba(255,180,240,.8)';g.lineWidth=Math.max(1,d);g.beginPath();g.moveTo(0,hz);g.lineTo(W,hz);g.stroke();
+}
+const mixHex=(a,b,k)=>{const A=rgbOf(a).split(',').map(Number),B=rgbOf(b).split(',').map(Number);return A.map((v,i)=>Math.round(B[i]+(v-B[i])*k));};
 function openChaos(id){
   const R=chaosRows(id),st=CHAOS_STYLE[id]||{mesh:'ico',fx:'crt'},M=MODS[id];
-  Object.assign(CH,{open:true,id,ns:R.ns,rows:R.rows,st,mesh:MESH[st.mesh](),yaw:.6,pitch:.35,vy:.004,vp:0,energy:0,drag:null,applied:0,lastSig:'',changed:[],spk:[],
+  Object.assign(CH,{open:true,id,ns:R.ns,rows:R.rows,st,mesh:MESH[st.mesh](),yaw:.6,pitch:.35,vy:.004,vp:0,energy:0,squish:0,tp:null,drag:null,applied:0,lastSig:'',changed:[],spk:[],
     snap:R.rows.map(r=>getV(R.ns,r.k)),seed:[...id].reduce((a,c)=>a+c.charCodeAt(0),0),col:st.col||getV(id,'cFg')||M.c});
   $('#chTitle').textContent='Chaos toy — '+M.name;$('#chaos .ticon').innerHTML=CUBE;
   const w=$('#chaos');w.style.display='block';
@@ -2571,11 +2587,11 @@ function openChaos(id){
   if(r&&r.right+8+W>innerWidth)w.style.left=Math.max(4,r.left-W-8)+'px';
   chaosInfo();requestAnimationFrame(chaosFrame);
 }
-function closeChaos(){CH.open=false;$('#chaos').style.display='none';}
+function closeChaos(){if(CH.live)chaosDrive(false);CH.live=false;CH.open=false;$('#chaos').style.display='none';}
 // the mix: three motion axes (spin angle, tilt, how hard it's spinning) blended into every setting with its own fixed weights
 function chaosValue(r,i){
   const h=k=>hash1(CH.seed*97+i*31+k*7),w1=(1+Math.floor(h(1)*3))*(h(2)<.5?-1:1),w2=(h(3)-.5)*3,w3=(h(4)-.5)*2.4,ph=h(5);
-  const A2=(CH.pitch+1.4)/2.8,t=.5+.5*Math.sin(w1*CH.yaw+2*Math.PI*(w2*A2+w3*CH.energy+ph));
+  const w4=(h(6)-.5)*2.6,A2=(CH.pitch+1.4)/2.8,t=.5+.5*Math.sin(w1*CH.yaw+2*Math.PI*(w2*A2+w3*CH.energy+w4*CH.squish+ph));
   if(r.toggle)return t>.5;
   if(r.chips){const o=r.chips;return o[Math.min(o.length-1,Math.floor(t*o.length))][1];}
   const v=r.min+t*(r.max-r.min);return Number.isInteger(r.min)&&Number.isInteger(r.max)&&r.max-r.min>=4?Math.round(v):Math.round(v*100)/100;
@@ -2584,6 +2600,16 @@ function chaosApply(vals){ // write many settings at once, then apply once
   const nsR=(CH.ns==='aquaM'||CH.ns==='acidM'||CH.ns==='angelM')?'fx':CH.ns;let any=false;const ch=[];
   CH.rows.forEach((r,i)=>{const v=vals[i];if(getV(nsR,r.k)!==v){(cfg[nsR]=cfg[nsR]||{})[r.k]=v;any=true;ch.push(i);}});
   if(any){store.set('remixer.cfg',cfg);applyCfg(nsR);refreshMenus();if(nsR==='fx')pushFX();CH.changed=ch.concat(CH.changed.filter(i=>!ch.includes(i))).slice(0,4);chaosInfo();}
+}
+// while the toy is held or spinning, play its effect so the mix is audible
+function chaosDrive(on){
+  const id=CH.id,u=.5+.5*Math.sin(CH.yaw),v=(CH.pitch+1.4)/2.8,E=CH.energy;
+  if(id==='xy'||id==='xy2'||id==='aquaM'||id==='acidM'){const F=fx[id];if(on){F.on=true;F.gx=u;F.gy=1-v;}else if(!F.latch)F.on=false;pushFX();if(UI.padCan[id])drawPad(id);}
+  else if(id==='stut'){if(on){const d=STUT_DIVS[Math.min(5,Math.floor(E*6))][0];if(fx.stut.active!==d)setStut(d);}else if(!fx.stut.latch)setStut(0);}
+  else if(id==='pd'){if(!fx.pump.latch&&fx.pump.on!==on)setPump(on);}
+  else if(id==='tape'){if(!fx.tape.latch&&fx.tape.on!==on)setTape(on);}
+  else if(id==='pitch'){if(on){const st=PITCHES[Math.min(PITCHES.length-1,Math.floor(u*PITCHES.length))];if(fx.pitch.active!==st)setPitch(st);}else if(!fx.pitch.latch)setPitch(null);}
+  else if(id==='angelM'){const F=fx.angelM;F.all=on;if(on){F.vowel=v;F.spread=Math.min(1,.3+E);}F.on=F.touches.size>0||F.all||F.latch;}
 }
 function chaosInfo(){
   const show=(CH.changed.length?CH.changed:CH.rows.map((_,i)=>i).slice(0,4)).slice(0,4).map(i=>{const r=CH.rows[i],v=getV(CH.ns,r.k);
@@ -2595,13 +2621,14 @@ function chaosFrame(){
   const c=$('#chCan');fitCanvas(c);const W=c.width,H=c.height,g=c.getContext('2d'),d=devicePixelRatio||1,t=performance.now()/1000,st=CH.st;
   if(!CH.drag){CH.yaw+=CH.vy;CH.pitch=Math.max(-1.4,Math.min(1.4,CH.pitch+CH.vp));CH.vy*=.975;CH.vp*=.9;if(Math.abs(CH.vy)<.002)CH.vy=.002*Math.sign(CH.vy||1);}
   CH.energy+=(Math.min(1,Math.abs(CH.vy)*9+Math.abs(CH.vp)*9)-CH.energy)*.08;
+  CH.squish=CH.drag!=null?CH.squish+(1-CH.squish)*.035:CH.squish*.93; // holding presses in deeper; letting go springs back
+  const wantLive=store.get('remixer.chLive',true)&&(CH.drag!=null||CH.energy>.08);
+  if(wantLive||CH.live){if(t-(CH.drove||0)>.03){CH.drove=t;chaosDrive(wantLive);}CH.live=wantLive;}
   // apply the mix (throttled, only when it moved)
-  const sig=CH.yaw.toFixed(2)+'|'+CH.pitch.toFixed(2)+'|'+CH.energy.toFixed(2);
-  if(sig!==CH.lastSig&&t-CH.applied>.09&&CH.rows.length&&(CH.drag||Math.abs(CH.vy)>.0025||CH.energy>.02)){CH.lastSig=sig;CH.applied=t;chaosApply(CH.rows.map((r,i)=>chaosValue(r,i)));}
+  const sig=CH.yaw.toFixed(2)+'|'+CH.pitch.toFixed(2)+'|'+CH.energy.toFixed(2)+'|'+CH.squish.toFixed(2);
+  if(sig!==CH.lastSig&&t-CH.applied>.09&&CH.rows.length&&(CH.drag||Math.abs(CH.vy)>.0025||CH.energy>.02||CH.squish>.02)){CH.lastSig=sig;CH.applied=t;chaosApply(CH.rows.map((r,i)=>chaosValue(r,i)));}
   // background
-  const bgs={liquid:['#022a40','#000a14'],goo:['#0a2400','#020800'],halo:['#2a1f50','#05030f'],crt:['#001808','#000']};
-  const bg=g.createLinearGradient(0,0,0,H),bc=bgs[st.fx]||['#141428','#000'];bg.addColorStop(0,bc[0]);bg.addColorStop(1,bc[1]);g.fillStyle=bg;g.fillRect(0,0,W,H);
-  g.strokeStyle='rgba(255,255,255,.06)';g.lineWidth=1;for(let i=-8;i<=8;i++){const y=H*.82;g.beginPath();g.moveTo(W/2+i*W*.06,y);g.lineTo(W/2+i*W*.25,H);g.stroke();} // floor
+  chaosSky(g,W,H,d,t);
   // beat (for pulse)
   let env=0;if(lenS&&bpm){const b=(heardPos()/sr-offSec)/(60/bpm);env=Math.exp(-(b-Math.floor(b))*5);}
   const E=CH.energy,M=CH.mesh,cy=Math.cos(CH.yaw),sy=Math.sin(CH.yaw),cp=Math.cos(CH.pitch),sp=Math.sin(CH.pitch);
@@ -2612,7 +2639,10 @@ function chaosFrame(){
     if(st.fx==='halo')y+=Math.sin(t*1.6)*.06;
     const sc=st.fx==='reel'?1:1;let X=x*cy-z*sy,Z=x*sy+z*cy;let Y=y*cp-Z*sp;Z=y*sp+Z*cp;Z+=3.3;
     if(st.fx==='reel'){} // spins with the yaw
-    const fz=Math.min(W,H)*1.05;return [W/2+X*sc/Z*fz,H*.46-Y*sc/Z*fz,Z,X,Y];});
+    const fz=Math.min(W,H)*1.05;let px=W/2+X*sc/Z*fz,py=H*.46-Y*sc/Z*fz;
+    if(CH.squish>.01&&CH.tp){const rr=Math.min(W,H)*.22,dx=px-CH.tp[0]*W,dy=py-CH.tp[1]*H,fall=Math.exp(-(dx*dx+dy*dy)/(rr*rr)),k=1-.55*CH.squish*fall; // pressed in where the finger is
+      X*=k;Y*=k;Z=(Z-3.3)*k+3.3+.35*CH.squish*fall;px=W/2+X*sc/Z*fz;py=H*.46-Y*sc/Z*fz;}
+    return [px,py,Z,X,Y];});
   const L=[-.4,.7,-.6],ll=Math.hypot(...L);
   const faces=M.f.map((f,fi)=>{const a=P[f[0]],b=P[f[1]],cc=P[f[2]];
     const ux=b[3]-a[3],uy=b[4]-a[4],uz=b[2]-a[2],vx=cc[3]-a[3],vy=cc[4]-a[4],vz=cc[2]-a[2];
@@ -2622,15 +2652,16 @@ function chaosFrame(){
     const facing=-(nx*cx0+ny*cy0+nz*cz0)/Math.hypot(cx0,cy0,cz0);
     return {f,fi,z:cz0,lit:Math.max(0,(nx*L[0]+ny*L[1]+nz*L[2])/ll),front:facing>.02};});
   faces.sort((a,b)=>b.z-a.z);
-  const rgb=rgbOf(CH.col).split(',').map(Number);
+  const VP=VAPOR[CH.id]||['#00f0ff','#ff4fd8'],rgb=rgbOf(VP[0]).split(',').map(Number);
   for(const F of faces){
     // painter's order (far to near) keeps convex objects solid; back faces are only drawn see-through for the liquid
     let col;const sh=.22+.78*F.lit;
-    if(st.fx==='rainbow')col=`hsl(${(F.fi*45+CH.yaw*57+t*40)%360},95%,${30+F.lit*45}%)`;
-    else if(st.fx==='reel'&&F.f.length===4){const stripe=F.fi%2;col=`rgb(${Math.round(rgb[0]*sh*(stripe?1:.6))},${Math.round(rgb[1]*sh)},${Math.round(rgb[2]*sh)})`;}
-    else col=`rgba(${Math.round(rgb[0]*sh)},${Math.round(rgb[1]*sh)},${Math.round(rgb[2]*sh)},${st.fx==='liquid'?(F.front?.85:.25):1})`;
+    const m=mixHex(VP[0],VP[1],Math.min(1,F.lit*1.1)),w=Math.pow(F.lit,6)*.6,mm=m.map(x=>Math.round(x+(255-x)*w)); // deep -> bright -> a white sheen
+    if(st.fx==='rainbow')col=`hsl(${(F.fi*45+CH.yaw*57+t*40)%360},90%,${55+F.lit*25}%)`;  // pastel rainbow
+    else if(st.fx==='reel'&&F.f.length===4){const k=F.fi%2?1:.7;col=`rgb(${mm.map(x=>Math.round(x*k)).join(',')})`;}
+    else col=`rgba(${mm.join(',')},${st.fx==='liquid'?(F.front?.8:.22):1})`;
     g.beginPath();F.f.forEach((i,k)=>k?g.lineTo(P[i][0],P[i][1]):g.moveTo(P[i][0],P[i][1]));g.closePath();g.fillStyle=col;g.fill();
-    if(st.fx==='crt'||st.fx==='rainbow'){g.strokeStyle=st.fx==='crt'?`rgba(${rgb.join(',')},.9)`:'rgba(255,255,255,.35)';g.lineWidth=1.2*d;g.stroke();}
+    g.strokeStyle=st.fx==='crt'?`rgba(${rgb.join(',')},.95)`:`rgba(${rgbOf(VP[0])},.35)`;g.lineWidth=(st.fx==='crt'?1.4:1)*d;g.stroke(); // neon edges
     if(st.fx==='liquid'&&F.front&&F.lit>.85){g.fillStyle='rgba(255,255,255,.35)';g.fill();}
     if(st.fx==='goo'&&F.front&&F.lit>.9){g.fillStyle='rgba(230,255,190,.5)';g.fill();}
   }
@@ -2643,20 +2674,23 @@ function chaosFrame(){
     g.fillStyle='#fff6c8';for(const p of CH.spk){p.y-=p.v;p.l-=.015;g.globalAlpha=Math.max(0,p.l);g.fillRect(p.x-d,p.y-3*d,2*d,6*d);g.fillRect(p.x-3*d,p.y-d,6*d,2*d);}g.globalAlpha=1;CH.spk=CH.spk.filter(p=>p.l>0);}
   if(st.fx==='reel'){g.strokeStyle='rgba(255,255,255,.08)';g.lineWidth=2*d;g.beginPath();g.arc(W/2,H*.46,W*.33,0,6.283);g.stroke();}
   // chaos meter
-  g.fillStyle='rgba(255,255,255,.12)';g.fillRect(8*d,H-14*d,W-16*d,6*d);g.fillStyle=`hsl(${(1-E)*120},90%,55%)`;g.fillRect(8*d,H-14*d,(W-16*d)*E,6*d);
-  g.font=`700 ${Math.round(10*d)}px ${canvasFont}`;g.fillStyle='rgba(255,255,255,.7)';g.fillText('CHAOS',8*d,H-18*d);
+  g.fillStyle='rgba(255,255,255,.12)';g.fillRect(8*d,H-14*d,W-16*d,6*d);const cm=g.createLinearGradient(8*d,0,W-8*d,0);cm.addColorStop(0,'#01cdfe');cm.addColorStop(1,'#ff4fd8');g.fillStyle=cm;g.fillRect(8*d,H-14*d,(W-16*d)*E,6*d);
+  g.font=`700 ${Math.round(10*d)}px ${canvasFont}`;g.fillStyle='rgba(255,255,255,.75)';g.fillText(`CHAOS   SQUISH ${Math.round(CH.squish*100)}%`,8*d,H-18*d);
   requestAnimationFrame(chaosFrame);
 }
 { // chaos toy: dragging, flinging, window moving
   const c=$('#chCan');let lx=0,ly=0,lt=0;
-  c.addEventListener('pointerdown',e=>{e.preventDefault();c.setPointerCapture(e.pointerId);CH.drag=e.pointerId;lx=e.clientX;ly=e.clientY;lt=performance.now();c.style.cursor='grabbing';});
-  c.addEventListener('pointermove',e=>{if(CH.drag!==e.pointerId)return;const now=performance.now(),dt=Math.max(8,now-lt),dx=e.clientX-lx,dy=e.clientY-ly;lx=e.clientX;ly=e.clientY;lt=now;
+  const tpOf=e=>{const r=c.getBoundingClientRect();return [(e.clientX-r.left)/r.width,(e.clientY-r.top)/r.height];};
+  c.addEventListener('pointerdown',e=>{e.preventDefault();c.setPointerCapture(e.pointerId);CH.drag=e.pointerId;CH.tp=tpOf(e);lx=e.clientX;ly=e.clientY;lt=performance.now();c.style.cursor='grabbing';});
+  c.addEventListener('pointermove',e=>{if(CH.drag!==e.pointerId)return;CH.tp=tpOf(e);const now=performance.now(),dt=Math.max(8,now-lt),dx=e.clientX-lx,dy=e.clientY-ly;lx=e.clientX;ly=e.clientY;lt=now;
     CH.yaw+=dx*.012;CH.pitch=Math.max(-1.4,Math.min(1.4,CH.pitch+dy*.01));CH.vy=CH.vy*.5+dx*.012*16/dt*.5;CH.vp=CH.vp*.5+dy*.01*16/dt*.5;});
   const up=e=>{if(CH.drag===e.pointerId){CH.drag=null;c.style.cursor='';}};c.addEventListener('pointerup',up);c.addEventListener('pointercancel',up);
   c.addEventListener('dblclick',()=>{CH.yaw+=Math.random()*8;CH.pitch=(Math.random()-.5)*2.4;CH.vy=(Math.random()<.5?-1:1)*(.15+Math.random()*.2);});
   $('#chScr').addEventListener('click',()=>{CH.yaw+=2+Math.random()*8;CH.pitch=(Math.random()-.5)*2.4;CH.vy=(Math.random()<.5?-1:1)*(.15+Math.random()*.25);});
   $('#chReset').addEventListener('click',()=>{CH.vy=.002;CH.vp=0;CH.energy=0;chaosApply(CH.snap);CH.changed=[];chaosInfo();});
   $('#chClose').addEventListener('click',closeChaos);
+  $('#chLive').classList.toggle('on',store.get('remixer.chLive',true));
+  $('#chLive').addEventListener('click',()=>{const on=!store.get('remixer.chLive',true);store.set('remixer.chLive',on);$('#chLive').classList.toggle('on',on);if(!on&&CH.live)chaosDrive(false);});
   const w=$('#chaos'),tb=w.querySelector('.tbar');let ox=0,oy=0,mv=null;
   tb.addEventListener('pointerdown',e=>{if(e.target.id==='chClose')return;mv=e.pointerId;tb.setPointerCapture(mv);ox=e.clientX-w.offsetLeft;oy=e.clientY-w.offsetTop;});
   tb.addEventListener('pointermove',e=>{if(mv!==e.pointerId)return;w.style.left=Math.max(0,Math.min(innerWidth-60,e.clientX-ox))+'px';w.style.top=Math.max(0,Math.min(innerHeight-30,e.clientY-oy))+'px';});
