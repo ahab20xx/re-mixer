@@ -1957,7 +1957,11 @@ function drawVideoFx(g,W,H,d,id,a=padAmts(id),opt={}){
   tg.filter='none';tg.globalAlpha=1;
   // warble: wavy rows
   const wb=A('warble'),aqw=A('aqua')*(.3+.7*getV('fx','aqSway')/100); // aqua: slow water ripple
-  if(wb>0||aqw>0){const step=Math.max(2,Math.round(3*d));for(let y=0;y<H;y+=step){const ox=Math.sin(y*.035/d+t*4.5)*wb*16*d+Math.sin(y*.018/d+t*1.6)*aqw*8*d;g.drawImage(T,0,y,W,step,ox,y,W,step);}}
+  // the water ripple belongs under the surface: above the waterline the picture stays still
+  const aqLev=aqw>0?(a.aquaLevel!=null?Math.max(.06,Math.min(.97,a.aquaLevel)):.22+.72*Math.min(1,A('aqua'))):0,aqSurf=H*(1-aqLev),aqFade=Math.max(8*d,H*.03);
+  if(wb>0||aqw>0){const step=Math.max(2,Math.round(3*d));for(let y=0;y<H;y+=step){
+    const sub=aqw>0?Math.max(0,Math.min(1,(y+step-aqSurf)/aqFade)):0;
+    const ox=Math.sin(y*.035/d+t*4.5)*wb*16*d+Math.sin(y*.018/d+t*1.6)*aqw*sub*8*d;g.drawImage(T,0,y,W,step,ox,y,W,step);}}
   else g.drawImage(T,0,0);
   // reverb: glow
   if(A('reverb')>0){const gw=Math.max(2,Math.round(W/10)),gh=Math.max(2,Math.round(H/10)),Gc=vcanvas(id+'g',gw,gh),gc=Gc.getContext('2d');gc.clearRect(0,0,gw,gh);gc.drawImage(T,0,0,gw,gh);
@@ -2041,17 +2045,20 @@ function drawHeaven(g,W,H,d,k){ // warm bloom, god rays and drifting sparkles ov
   g.restore();
 }
 /* ---------- AQUA fishing: one shared pond, drawn into every aqua screen ---------- */
-const FISH={fish:[],phase:'idle',t:0,cool:4,hd:null,eaten:false,dip:0,spl:[],at:0,hooked:null};
+const FISH={fish:[],phase:'idle',t:0,cool:4,hd:null,eaten:false,dip:0,spl:[],at:0,hooked:null,px:.62};
 const FISHPAL=[['#ff8a2a','#ffd8a8','#7a3a00'],['#3ab0ff','#c8ecff','#14508a'],['#ffd23a','#fff4c0','#8a6a00'],['#ff4a6a','#ffc8d2','#7a1028'],['#9a7aff','#e4dcff','#3a2a8a'],['#4ad08a','#d0ffe4','#14603a']];
 let fNoise=null;
 const fishSnd={
   noise(){if(!fNoise){fNoise=ctx.createBuffer(1,ctx.sampleRate,ctx.sampleRate);const d=fNoise.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;}const n=ctx.createBufferSource();n.buffer=fNoise;return n;},
-  plop(T,a){ // a soft droplet: a little rising bloop, muffled, with a gentle low thump
+  plop(T,a,v){ // a soft droplet: a rising bloop with a low thump under it. v picks one of five so it never repeats
+    const V=v==null?Math.floor(Math.random()*5):((v%5)+5)%5;
+    const f0=[330,430,255,300,200][V],f1=[820,1250,540,980,415][V],cut=[1400,2400,850,1700,650][V],
+          l0=[130,165,98,145,84][V],l1=[70,98,50,78,42][V],dk=[.16,.11,.24,.14,.28][V],lk=[.18,.13,.28,.15,.34][V],rise=[.09,.06,.13,.08,.16][V];
     const o=ctx.createOscillator(),lp=ctx.createBiquadFilter(),g=ctx.createGain(),o2=ctx.createOscillator(),g2=ctx.createGain();
-    o.type='sine';o.frequency.setValueAtTime(330,T);o.frequency.exponentialRampToValueAtTime(820,T+.09);lp.type='lowpass';lp.frequency.value=1400;
-    g.gain.setValueAtTime(0,T);g.gain.linearRampToValueAtTime(.22*a,T+.008);g.gain.exponentialRampToValueAtTime(.001,T+.16);
-    o2.type='sine';o2.frequency.setValueAtTime(130,T);o2.frequency.exponentialRampToValueAtTime(70,T+.15);g2.gain.setValueAtTime(.2*a,T);g2.gain.exponentialRampToValueAtTime(.001,T+.18);
-    o.connect(lp).connect(g).connect(aq.sfx);o2.connect(g2).connect(aq.sfx);g.connect(aq.bubDel);o.start(T);o2.start(T);o.stop(T+.2);o2.stop(T+.2);},
+    o.type='sine';o.frequency.setValueAtTime(f0,T);o.frequency.exponentialRampToValueAtTime(f1,T+rise);lp.type='lowpass';lp.frequency.value=cut;
+    g.gain.setValueAtTime(0,T);g.gain.linearRampToValueAtTime(.22*a,T+.008);g.gain.exponentialRampToValueAtTime(.001,T+dk);
+    o2.type='sine';o2.frequency.setValueAtTime(l0,T);o2.frequency.exponentialRampToValueAtTime(l1,T+lk*.85);g2.gain.setValueAtTime(.2*a,T);g2.gain.exponentialRampToValueAtTime(.001,T+lk);
+    o.connect(lp).connect(g).connect(aq.sfx);o2.connect(g2).connect(aq.sfx);g.connect(aq.bubDel);o.start(T);o2.start(T);o.stop(T+lk+.05);o2.stop(T+lk+.05);},
   splash(T,a,len=.5){ // a soft wash of water: low, rounded noise, with a watery echo
     const n=this.noise(),lp=ctx.createBiquadFilter(),g=ctx.createGain();lp.type='lowpass';lp.frequency.setValueAtTime(1100,T);lp.frequency.exponentialRampToValueAtTime(380,T+len);lp.Q.value=.4;
     g.gain.setValueAtTime(0,T);g.gain.linearRampToValueAtTime(.32*a,T+.03);g.gain.exponentialRampToValueAtTime(.001,T+len);
@@ -2086,7 +2093,9 @@ function fishTick(){
   const N=fishOn?+getV('fx','aqFishN')||4:0;
   while(FISH.fish.length<N){const dir=Math.random()<.5?1:-1;FISH.fish.push({x:dir>0?-.1-Math.random()*.3:1.1+Math.random()*.3,d:.15+Math.random()*.8,dir,sp:.05+Math.random()*.08,ph:Math.random()*6,pal:Math.floor(Math.random()*FISHPAL.length),size:Math.random(),st:'swim'});}
   if(FISH.fish.length>N)FISH.fish.length=N;
-  const hx=.62;FISH.dip=Math.max(0,FISH.dip-dt*1.6);
+  // the rod follows your finger across the Aqua pad: bobber, line and hook all trail along
+  const tgx=Math.max(.06,Math.min(.94,fx.aquaM.gx));FISH.px+=(tgx-FISH.px)*Math.min(1,dt*7);
+  const hx=FISH.px;FISH.dip=Math.max(0,FISH.dip-dt*1.6);
   for(const f of FISH.fish){
     if(f.st==='swim'){f.x+=f.dir*f.sp*dt;f.d=Math.max(.06,Math.min(.97,f.d+Math.sin(now/1000*.7+f.ph)*.03*dt));if(f.x>1.25||f.x<-.25){f.dir=-f.dir;f.d=.1+Math.random()*.85;f.pal=Math.floor(Math.random()*FISHPAL.length);}}
     else if(f.st==='go'){const dx=hx-f.x,dd=FISH.hd-f.d,l=Math.hypot(dx,dd)||1;f.dir=dx>0?1:-1;f.x+=dx/l*.22*dt;f.d+=dd/l*.22*dt;
@@ -2111,6 +2120,11 @@ function fishTick(){
       FISH.phase='idle';FISH.hooked=null;FISH.eaten=false;FISH.hd=0;FISH.cool=1.5+Math.random()*2.5;}}
   for(const p of FISH.spl){p.vy+=2.4*dt;p.x+=p.vx*dt;p.y+=p.vy*dt;p.l-=dt*1.2;}FISH.spl=FISH.spl.filter(p=>p.l>0);
 }
+// the acid overlay swells in and drains out instead of snapping, and follows the pad's resonance
+let acVisAmt=0,acVisAt=0;
+function acVisTick(){const now=performance.now(),dt=Math.min(.1,(now-(acVisAt||now))/1000);acVisAt=now;
+  const tgt=acVisLive()?.3+.65*(1-fx.acidM.gy):0;
+  acVisAmt+=(tgt-acVisAmt)*Math.min(1,dt*3.2);if(acVisAmt<.003)acVisAmt=0;}
 function splashAt(x,n){for(let i=0;i<n;i++)FISH.spl.push({x,y:0,vx:(Math.random()-.5)*.35,vy:-.6-Math.random()*.8,l:1});}
 function pixLine(c,x0,y0,x1,y1,col){x0=Math.round(x0);y0=Math.round(y0);x1=Math.round(x1);y1=Math.round(y1);const dx=Math.abs(x1-x0),dy=-Math.abs(y1-y0),sx=x0<x1?1:-1,sy=y0<y1?1:-1;let e=dx+dy;c.fillStyle=col;
   for(let k=0;k<400;k++){c.fillRect(x0,y0,1,1);if(x0===x1&&y0===y1)break;const e2=2*e;if(e2>=dy){e+=dy;x0+=sx;}if(e2<=dx){e+=dx;y0+=sy;}}}
@@ -2124,7 +2138,7 @@ function drawFish(c,cx,cy,f,t){
 }
 function drawFishing(c,lw,lh,sL,t,layer){
   const mode=getV('fx','aqFish'),fishOn=mode==='both'||mode==='fish',lineOn=mode==='both'||mode==='line';if(mode==='off')return;
-  const wh=lh-sL,Y=d=>sL+2+d*(wh-6),hx=Math.round(.62*lw),bx=hx+Math.round(Math.sin(t*1.3)*1),by=sL+Math.round(Math.sin(bx*.35+t*2.2)*1.1)-1+Math.round(FISH.dip*3);
+  const wh=lh-sL,Y=d=>sL+2+d*(wh-6),hx=Math.round(Math.max(2,Math.min(lw-3,FISH.px*lw))),bx=hx+Math.round(Math.sin(t*1.3)*1),by=sL+Math.round(Math.sin(bx*.35+t*2.2)*1.1)-1+Math.round(FISH.dip*3);
   const hy=Math.max(by+3,Math.round(Y(FISH.hd??.5)));
   if(layer==='under'){
     if(fishOn)for(const f of FISH.fish){if(f.st==='jump')continue;drawFish(c,f.x*lw,Y(f.d),f,t);}
@@ -3312,7 +3326,7 @@ function viewerAmts(){
   if(m==='both'){const p=padAmts('xy'),q=padAmts('xy2');a={...p};for(const k in q)a[k]=Math.max(a[k]||0,q[k]);}
   else if(m!=='none')a=padAmts(m);
   if(aqVisLive())a={...a,aqua:Math.max(a.aqua||0,.35+.65*(1-fx.aquaM.gy)),aquaLevel:1-fx.aquaM.gy};
-  if(acVisLive())a={...a,acid:Math.max(a.acid||0,.9)};
+  if(acVisAmt>0)a={...a,acid:Math.max(a.acid||0,acVisAmt)};
   if(fx.angelM.on&&onPage('angelM'))a={...a,angel:1};
   return a;
 }
@@ -3402,7 +3416,7 @@ function scopeGrid(cv,ids){
 let lastBeat=-1;const dots=$$('#dots i');
 function frame(){
   if(ctx){acidTick();bubbleTick();angelTick();}
-  fishTick();
+  fishTick();acVisTick();
   if(fitCanvas(wcan))drawWaveBase();
   syncVideo();
   for(const id in UI.padCan){fitCanvas(UI.padCan[id]);drawPad(id);}
