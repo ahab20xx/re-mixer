@@ -1215,7 +1215,7 @@ const FXSPEC={
     {k:'acVis',l:'Visuals only (module)',toggle:1,v:false},
     {k:'acSyn',l:'Acid synth',min:0,max:100,v:65,f:pct},
     {k:'acWave',l:'Wave',chips:[['Saw','sawtooth'],['Square','square']],v:'sawtooth'},
-    {k:'acPat',l:'Pattern',chips:[['Follow song',-1],['1',0],['2',1],['3',2]],v:-1},
+    {k:'acPat',l:'Scale',chips:[['Song','song'],['Minor pent.','pent'],['Phrygian','phry'],['Blues','blues'],['Dorian','dorian'],['Root + 5th','octave']],v:'song'},
     {k:'acBusy',l:'Busy',min:0,max:100,v:60,f:pct},
     {k:'acKey',l:'Key',min:-1,max:11,v:-1,f:v=>v<0?'Auto ('+NOTE[songKey]+(songAna&&songAna.minor?'m':'')+')':NOTE[v]},
     {k:'acSong',l:'Song filter',min:0,max:100,v:70,f:pct},
@@ -1406,7 +1406,7 @@ function acidSched(){
   if(!(a>0&&lvl>0&&playing&&lenS&&rateR>.05)){if(syNext!==null){sy.vca.gain.cancelScheduledValues(now);sy.vca.gain.setTargetAtTime(0,now,.01);syNext=null;}return;}
   const [pos,t0]=schedBase(),stepS=60/bpm*sr*getV('fx','acRate'),rel=pos-offSec*sr,b=rel/stepS;
   if(syNext===null||syNext<=Math.floor(b)-1||syNext>Math.floor(b)+6)syNext=Math.floor(b)+1;
-  const pat=+getV('fx','acPat'),follow=pat<0&&songAna,P=PATS[Math.max(0,pat)|0]||PATS[0],kk=+getV('fx','acKey'),root=kk<0?songKey:kk,stepT=stepS/(rateR*sr);
+  const follow=!!songAna,P=PATS[0],kk=+getV('fx','acKey'),root=kk<0?songKey:kk,stepT=stepS/(rateR*sr);
   const stepSec=stepS/sr,shift=kk<0?0:((kk-songKey)%12+12)%12;
   const wv=getV('fx','acWave')||'sawtooth';if(sy.osc.type!==wv)sy.osc.type=wv;
   const res=acP('acRes')/100,envd=acP('acEnv')/100;
@@ -1473,19 +1473,25 @@ function anaChord(s0,s1){ // strongest bass note in a time range that fits the k
 }
 const anaMel=sec=>{const A=songAna,f=Math.round(sec/A.hop);return f>=0&&f<A.mel.length?A.mel[f]:-1;};
 const anaOn=sec=>{const A=songAna,i=Math.round(sec/A.ohs);if(i<0||i>=A.on.length)return 0;return Math.max(A.on[i],(A.on[i+1]||0)*.7,(A.on[i-1]||0)*.5);};
+// acid scale: every choice still follows the song (chords, melody, busyness) but plays it through a different scale
+const AC_SCALES={pent:[0,3,5,7,10],phry:[0,1,3,5,7,8,10],blues:[0,3,5,6,7,10],dorian:[0,2,3,5,7,9,10],octave:[0,7]};
+const acStyle=()=>{const v=getV('fx','acPat');return typeof v==='string'&&(v==='song'||AC_SCALES[v])?v:'song';};
+function acScale(){const st=acStyle();return st==='song'?songAna.scale:AC_SCALES[st].map(v=>(v+songAna.key)%12);}
+const snapPc=(pc,sc)=>{let b=sc[0],bd=99;for(const s of sc){const d=Math.min((s-pc+12)%12,(pc-s+12)%12);if(d<bd||(d===bd&&s===pc)){bd=d;b=s;}}return b;};
 function genStep(idx,stepSec){ // one step of the "Follow song" acid line (same input -> same notes, so loops repeat)
-  const A=songAna,C=A.cache,ck=idx+'|'+stepSec.toFixed(4)+'|'+getV('fx','acBusy');if(C.has(ck))return C.get(ck);
+  const A=songAna,C=A.cache,SC=acScale(),ck=idx+'|'+stepSec.toFixed(4)+'|'+getV('fx','acBusy')+'|'+acStyle();if(C.has(ck))return C.get(ck);
   const sec=offSec+idx*stepSec,beat=60/bpm,bar=beat*4,bi=Math.floor((sec-offSec)/bar),inBar=((idx%Math.round(bar/stepSec))+Math.round(bar/stepSec))%Math.round(bar/stepSec);
   const h=k=>hash1(idx*7+k*131+977),busy=getV('fx','acBusy')/100,spb=Math.round(beat/stepSec)||1;
-  const cr=anaChord(offSec+bi*bar,offSec+(bi+1)*bar),on=anaOn(sec),down=inBar===0,onBeat=inBar%spb===0;
-  const third=A.scale.includes((cr+3)%12)?3:4,sev=A.scale.includes((cr+10)%12)?10:11;
+  const cr=snapPc(anaChord(offSec+bi*bar,offSec+(bi+1)*bar),SC),on=anaOn(sec),down=inBar===0,onBeat=inBar%spb===0;
+  const third=SC.includes((cr+3)%12)?3:4,sev=SC.includes((cr+10)%12)?10:11;
   let rest=!down&&(on+busy*.75+(onBeat?.25:0)+h(1)*.3)<.85;
   let pc;const m=anaMel(sec);
   if(down||(onBeat&&h(2)<.5))pc=cr;
   else if(m>=0&&h(3)<.75){ // lean on the melody: its note if it's in key, else the nearest chord tone
     const tones=[cr,(cr+third)%12,(cr+7)%12,(cr+sev)%12];
-    pc=A.scale.includes(m)?m:tones.reduce((b,t)=>{const d=Math.min((t-m+12)%12,(m-t+12)%12),db=Math.min((b-m+12)%12,(m-b+12)%12);return d<db?t:b;},cr);
+    pc=SC.includes(m)?m:tones.reduce((b,t)=>{const d=Math.min((t-m+12)%12,(m-t+12)%12),db=Math.min((b-m+12)%12,(m-b+12)%12);return d<db?t:b;},cr);
   }else pc=[cr,(cr+7)%12,(cr+third)%12,cr,(cr+sev)%12][Math.floor(h(4)*5)];
+  pc=snapPc(pc,SC);                                                                 // always inside the chosen scale
   let midi=36+((pc-A.key+12)%12)+A.key;if(midi>50)midi-=12;                       // keep it in the bass
   if(!down&&(h(5)<.28||(on>.7&&h(6)<.5)))midi+=12;                                  // acid octave jumps
   const acc=down||on>.55,slide=!rest&&h(7)<.2+busy*.1;
@@ -2199,7 +2205,7 @@ function drawAcidMod(){
   // step lights
   if(!UI.acidLeds||!lenS||!bpm)return;
   const stepS=60/bpm*sr*getV('fx','acRate'),b=(heardPos()-offSec*sr)/stepS,idx=Math.floor(b),i0=((idx%16)+16)%16,base=idx-i0;
-  const pat=+getV('fx','acPat'),follow=pat<0&&songAna,P=PATS[Math.max(0,pat)|0]||PATS[0],kk=+getV('fx','acKey'),root=kk<0?songKey:kk;
+  const pat=acStyle(),follow=!!songAna,P=PATS[0],kk=+getV('fx','acKey'),root=kk<0?songKey:kk;
   const key=base+'|'+i0+'|'+pat+'|'+kk+'|'+F.mute.join('')+'|'+getV('fx','acRate')+'|'+playing;
   if(key===acidLedKey)return;acidLedKey=key;
   UI.acidLeds.forEach((el,i)=>{let rest,acc,midi;
@@ -2223,7 +2229,7 @@ const MENUS={
   tape:[{k:'len',l:'Length',opts:[['½ beat',.5],['1 beat',1],['2 beats',2],['4 beats',4]]},{k:'spin',l:'Spin',opts:[['On',true],['Off',false]]}],
   viewer:[{k:'vfx',l:'Effects',opts:[['Both pads','both'],['Pad A only','xy'],['Pad B only','xy2'],['None (clean)','none']]},{k:'vfit',l:'View',opts:[['Fit whole frame','contain'],['Fill window','cover']]},{k:'vcrt',l:'Screen',opts:[['Clean','off'],['Old TV (subtle)','soft'],['Old TV (strong)','hard']]},{k:'vrot',l:'Rotate',opts:[['0°',0],['90° ↻',90],['180°',180],['270° ↻',270]]},{k:'vscope',l:'Scope',opts:[['Off','none'],['Pad A','xy'],['Pad B','xy2'],['Both pads','both']]},{k:'vgrid',l:'Grid',opts:[['On','on'],['Off','off']]}],
   aquaM:[{k:'aqNotes',l:'Notes',opts:[['Chords','c'],['Melody','m'],['Pentatonic','p']]},{k:'aqOct',l:'Range',opts:[['Low',-12],['Mid',0],['High',12]]}],
-  acidM:[{k:'acPat',l:'Pattern',opts:[['Follow song',-1],['1',0],['2',1],['3',2]]},{k:'acWave',l:'Wave',opts:[['Saw','sawtooth'],['Square','square']]},{k:'acRate',l:'Steps',opts:[['1/8',.5],['1/16',.25],['1/32',.125]]}],
+  acidM:[{k:'acPat',l:'Scale',opts:[['Song','song'],['Minor pent.','pent'],['Phrygian','phry'],['Blues','blues'],['Dorian','dorian'],['Root + 5th','octave']]},{k:'acWave',l:'Wave',opts:[['Saw','sawtooth'],['Square','square']]},{k:'acRate',l:'Steps',opts:[['1/8',.5],['1/16',.25],['1/32',.125]]}],
   pitch:[{k:'mode',l:'Mode',opts:[['Speed','s'],['Keep tempo','k'],['Keep pitch','t']]},{k:'glide',l:'Glide',opts:[0,60,120,250,500,800].map(v=>[v+'ms',v])}]
 };
 const mpop=document.createElement('div');mpop.id='mpop';document.body.appendChild(mpop);
