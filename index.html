@@ -1245,7 +1245,7 @@ const FXSPEC={
     {k:'anRev',l:'Reverb',chips:[['Chamber','chamber'],['Hall','hall'],['Cathedral','cath'],['Heaven','heaven'],['Shimmer','shimmer']],v:'cath'},
     {k:'anSpace',l:'Reverb amount',min:0,max:100,v:65,f:pct},
     {k:'anVib',l:'Vibrato',min:0,max:100,v:40,f:pct},
-    {k:'anFollow',l:'Chord changes',chips:[['Every bar','bar'],['Every beat','beat']],v:'bar'},
+    {k:'anFollow',l:'Chord changes',chips:[['Every bar','bar'],['Every half bar','beat'],['Hold (steady)','hold']],v:'bar'},
     {k:'anLevel',l:'Level',min:0,max:100,v:70,f:pct}],
   pitch:[{h:'PITCH'},
     {k:'pMode',l:'Mode',chips:[['Speed','s'],['Keep tempo','k'],['Keep pitch','t']],v:'k'},
@@ -1465,10 +1465,11 @@ function analyzeSong(buf){
     for(let i=0;i<n;i++){let v=0;for(let k=0;k<ds;k++){const j=i*ds+k;v+=ch[j]+(ch2?ch2[j]:0);}x[i]=v/ds;}
     const goer=(m,o,B)=>{const co=2*Math.cos(2*Math.PI*440*Math.pow(2,(m-69)/12)/fs);let s1=0,s2=0;for(let i=0;i<B;i++){const s0=x[o+i]+co*s1-s2;s2=s1;s1=s0;}return s1*s1+s2*s2-co*s1*s2;};
     const hop=.25,nf=Math.max(1,Math.floor(n/fs/hop)),BB=Math.floor(fs*.5),BM=Math.floor(fs*.25);
-    const bass=new Float32Array(nf*12),mel=new Int8Array(nf).fill(-1),melE=new Float32Array(nf),tot=new Float64Array(12);
+    const bass=new Float32Array(nf*12),mid=new Float32Array(nf*12),mel=new Int8Array(nf).fill(-1),melE=new Float32Array(nf),tot=new Float64Array(12);
     for(let f=0;f<nf;f++){
       const c=Math.floor(f*hop*fs);
       if(c+BB<=n)for(let m=36;m<60;m++){const p=goer(m,c,BB);bass[f*12+m%12]+=p;tot[m%12]+=p*(m<48?1.4:1);}
+      if(c+BM<=n)for(let m=48;m<72;m++)mid[f*12+m%12]+=goer(m,c,BM);
       if(c+BM<=n){let best=-1,bv=0,sum=0;const pm=new Float32Array(12);
         for(let m=60;m<84;m++){const p=goer(m,c,BM);pm[m%12]+=p;sum+=p;}
         for(let k=0;k<12;k++){tot[k]+=pm[k]*.5;if(pm[k]>bv){bv=pm[k];best=k;}}
@@ -1484,9 +1485,28 @@ function analyzeSong(buf){
     for(let i=0;i<no;i++){let e=0;for(let k=0;k<oh;k++){const v=x[i*oh+k];e+=v*v;}rms[i]=Math.sqrt(e/oh);}
     for(let i=1;i<no;i++)on[i]=Math.max(0,rms[i]-rms[i-1]);
     const srt=Float32Array.from(on).sort(),p95=srt[Math.floor(no*.95)]||1e-9;for(let i=0;i<no;i++)on[i]=Math.min(1,on[i]/p95);
-    songAna={hop,bass,mel,melE,key,minor,scale,on,ohs:1/16,len:n/fs,cache:new Map()};
+    songAna={hop,bass,mid,mel,melE,key,minor,scale,on,ohs:1/16,len:n/fs,cache:new Map(),id:Math.random()};
     return key;
   }catch(e){console.warn(e);songAna=null;return detectKey(buf);}
+}
+function chordScores(s0,s1,SC){
+  const A=songAna,f0=Math.max(0,Math.floor(s0/A.hop)),f1=Math.min(A.mel.length-1,Math.ceil(s1/A.hop)-1),b=new Float64Array(12),m=new Float64Array(12);
+  for(let f=f0;f<=Math.max(f0,f1);f++)for(let k=0;k<12;k++){b[k]+=A.bass[f*12+k];m[k]+=(A.mid?A.mid[f*12+k]:0);}
+  const nb=b.reduce((a,v)=>a+v,0)||1,nm=m.reduce((a,v)=>a+v,0)||1;
+  return SC.map(r=>{const t3=Math.max(m[(r+3)%12],m[(r+4)%12])/nm;
+    return {r,s:1.3*b[r]/nb+.45*b[(r+7)%12]/nb+.8*m[r]/nm+.7*t3+.6*m[(r+7)%12]/nm-.35*m[(r+1)%12]/nm-.35*m[(r+6)%12]/nm};});
+}
+let chordLine=null;
+function chordAt(sec,res){ // the song's chord at this moment: res 'bar' (4 beats) or 'half' (2 beats)
+  const A=songAna,SC=acScale(),key=A.id+'|'+bpm.toFixed(3)+'|'+offSec.toFixed(3)+'|'+acStyle();
+  if(!chordLine||chordLine.key!==key){
+    const mk=beats=>{const seg=60/bpm*beats,n=Math.ceil((A.len-offSec)/seg)+2,out=new Int8Array(n);let prev=-1;
+      for(let i=0;i<n;i++){const t0=offSec+(i-1)*seg;const sc=chordScores(Math.max(0,t0),Math.max(0,t0+seg),SC);let best=sc[0];for(const c of sc)if(c.s>best.s)best=c;
+        const p=prev>=0?sc.find(c=>c.r===prev):null;prev=p&&p.s>=best.s*.82?prev:best.r;out[i]=prev;}  // hysteresis: no flicker
+      return {seg,out};};
+    chordLine={key,bar:mk(4),half:mk(2)};
+  }
+  const L=chordLine[res==='half'?'half':'bar'],i=Math.floor((sec-offSec)/L.seg)+1;return L.out[Math.max(0,Math.min(L.out.length-1,i))];
 }
 function anaChord(s0,s1){ // strongest bass note in a time range that fits the key (root + fifth)
   const A=songAna,f0=Math.max(0,Math.floor(s0/A.hop)),f1=Math.min(A.mel.length-1,Math.ceil(s1/A.hop)),c=new Float64Array(12);
@@ -1504,7 +1524,7 @@ function genStep(idx,stepSec){ // one step of the "Follow song" acid line (same 
   const A=songAna,C=A.cache,SC=acScale(),ck=idx+'|'+stepSec.toFixed(4)+'|'+getV('fx','acBusy')+'|'+acStyle();if(C.has(ck))return C.get(ck);
   const sec=offSec+idx*stepSec,beat=60/bpm,bar=beat*4,bi=Math.floor((sec-offSec)/bar),inBar=((idx%Math.round(bar/stepSec))+Math.round(bar/stepSec))%Math.round(bar/stepSec);
   const h=k=>hash1(idx*7+k*131+977),busy=getV('fx','acBusy')/100,spb=Math.round(beat/stepSec)||1;
-  const cr=snapPc(anaChord(offSec+bi*bar,offSec+(bi+1)*bar),SC),on=anaOn(sec),down=inBar===0,onBeat=inBar%spb===0;
+  const cr=chordAt(sec,'bar'),on=anaOn(sec),down=inBar===0,onBeat=inBar%spb===0;
   const third=SC.includes((cr+3)%12)?3:SC.includes((cr+4)%12)?4:7,sev=SC.includes((cr+10)%12)?10:SC.includes((cr+11)%12)?11:12;
   let rest=!down&&(on+busy*.75+(onBeat?.25:0)+h(1)*.3)<.85;
   let pc;const m=anaMel(sec);
@@ -1545,8 +1565,8 @@ function makeIR(type){ // generated room responses for each reverb flavour
     if(type==='shimmer'){const tones=[2,3,4,6].map(m=>m*220*(1+Math.random()*.01));for(let i=0;i<n;i++){const t=i/R,env=Math.min(1,t*1.5)*Math.exp(-t*(2.2/len));let v=0;for(const f of tones)v+=Math.sin(2*Math.PI*f*t+c);d[i]+=v*.02*env*(Math.random()*.6+.7);}}}
   return irCache[type]=buf;
 }
-function angelVoicing(sec){ // the notes each part sings now
-  const H=harmonyAt(sec),SC=H.SC,n=SC.length,i=SC.indexOf(H.cr),mode=getV('fx','anHarm');
+function angelVoicing(sec,prev){ // the notes each part sings now
+  const H=harmonyAt(sec,getV('fx','anFollow')==='beat'?'half':'bar'),SC=H.SC,n=SC.length,i=SC.indexOf(H.cr),mode=getV('fx','anHarm');
   const deg=k=>SC[(i+k)%n];let pcs;
   if(mode==='u')pcs=[H.cr];
   else if(mode==='f')pcs=[H.cr,SC.includes((H.cr+7)%12)?(H.cr+7)%12:deg(4)];
@@ -1555,9 +1575,11 @@ function angelVoicing(sec){ // the notes each part sings now
   else if(mode==='m'){pcs=n>=5?[deg(0),deg(2),deg(4)]:SC.slice(0,3);const m=songAna?anaMel(sec):-1;pcs.push(m>=0?snapPc(m,SC):deg(n>=5?2:0));}
   else pcs=n>=5?[deg(0),deg(2),deg(4)]:SC.slice(0,3);
   const sh=keyShift()+(+getV('fx','anPitch')||0),base=57+(+getV('fx','anOct')||0);
-  const out=[];let prev=base-1;
-  for(const pc of pcs){let m=base+(((pc+sh)%12+12)%12-base%12+12)%12;while(m<=prev)m+=12;out.push(m);prev=m;} // close voicing upward
-  return out;
+  const voice=list=>{const o=[];let p=base-1;for(const pc of list){let m=base+(((pc+sh)%12+12)%12-base%12+12)%12;while(m<=p)m+=12;o.push(m);p=m;}return o;}; // close voicing upward
+  let best=voice(pcs);
+  if(prev&&prev.length===pcs.length&&mode!=='m'){ // smooth voice leading: try each inversion (and an octave down) and keep the closest
+    let bd=1e9;for(let r=0;r<pcs.length;r++)for(const o of [0,-12]){const v=voice(pcs.slice(r).concat(pcs.slice(0,r))).map(x=>x+o);const dd=v.reduce((a,x,j)=>a+Math.abs(x-prev[j]),0);if(dd<bd){bd=dd;best=v;}}}
+  return best;
 }
 function angelBuild(parts,per){
   for(const v of an.voices){try{v.o.stop();}catch(e){}v.o.disconnect();}for(const p of an.parts)p.g.disconnect();
@@ -1573,7 +1595,7 @@ function angelTick(){
   const F=fx.angelM,now=ctx.currentTime,here=onPage('angelM'),touching=F.touches.size>0||F.all||F.latch;
   const live=here&&touching&&!getV('fx','anVis');
   an.vca.gain.setTargetAtTime(live?getV('fx','anLevel')/100*.55:0,now,live?.12:.9);
-  if(!live){if(an.voices.length&&now-(an.offAt||(an.offAt=now))>6){angelBuild(0,0);an.shape='';}return;}
+  if(!live){an.holdIdx=null;if(an.voices.length&&now-(an.offAt||(an.offAt=now))>6){angelBuild(0,0);an.shape='';}return;}
   an.offAt=0;
   // reverb flavour + amount, vibrato
   const rt=getV('fx','anRev');if(an.rev!==rt){an.rev=rt;an.conv.buffer=makeIR(rt);}
@@ -1583,10 +1605,10 @@ function angelTick(){
   const vx=Math.max(0,Math.min(.999,F.vowel))*4,vi=Math.floor(vx),vf=vx-vi,A=VOWELS[vi],B=VOWELS[Math.min(4,vi+1)],gains=[2.4,1.5,.8];
   an.f.forEach((o,k)=>{o.f.frequency.setTargetAtTime(A[k]+(B[k]-A[k])*vf,now,.06);o.g.gain.setTargetAtTime(gains[k],now,.06);});
   // which chord: re-voice on every bar or beat (and whenever settings change)
-  const sec=lenS?heardPos()/sr:0,unit=60/bpm*(getV('fx','anFollow')==='beat'?1:4),idx=bpm?Math.floor((sec-offSec)/unit):0;
+  const fol=getV('fx','anFollow'),sec=lenS?heardPos()/sr:0,unit=60/bpm*(fol==='beat'?2:4),idx=fol==='hold'?(an.holdIdx??(an.holdIdx=bpm?Math.floor((sec-offSec)/unit):0)):(bpm?Math.floor((sec-offSec)/unit):0);
   const per=+getV('fx','anVoices')|0||1,key=idx+'|'+getV('fx','anHarm')+'|'+getV('fx','anOct')+'|'+getV('fx','anPitch')+'|'+getV('fx','acPat')+'|'+getV('fx','acKey');
   let notes=an.notes;
-  if(key!==an.key||!notes){an.key=key;notes=an.notes=angelVoicing(bpm?offSec+idx*unit+.05:sec);}
+  if(key!==an.key||!notes){an.key=key;notes=an.notes=angelVoicing(bpm?offSec+idx*unit+.05:sec,an.notes);}
   if(an.shape!==notes.length+'x'+per){angelBuild(notes.length,per);an.spr=-1;}
   an.voices.forEach(v=>{const f=440*Math.pow(2,(notes[v.j]-69)/12);if(Math.abs(v.o.frequency.value-f)>.5)v.o.frequency.setTargetAtTime(f,now,.12);});
   const spr=F.spread;if(Math.abs(spr-(an.spr??-1))>.005){an.spr=spr; // spread: tight little group -> huge, wide, airy choir
@@ -1606,9 +1628,9 @@ function bubble(a,midi,T){ // a bubble that rises in pitch and lands on a note
 // bubble notes: the current bar's chord tones (or the key's pentatonic), high up, on the 16th-note grid
 // one shared harmony for the acid line and the bubbles: same key, same scale, same chord in each bar
 const keyShift=()=>{const kk=+getV('fx','acKey');return kk<0?0:((kk-songKey)%12+12)%12;};
-function harmonyAt(sec){
+function harmonyAt(sec,res){
   if(!songAna){const k=songKey;return {SC:[0,3,5,7,10].map(v=>(v+k)%12),cr:k,tones:[k,(k+3)%12,(k+7)%12]};}
-  const SC=acScale(),bar=60/bpm*4,bi=Math.floor((sec-offSec)/bar),cr=snapPc(anaChord(offSec+bi*bar,offSec+(bi+1)*bar),SC),n=SC.length,i=SC.indexOf(cr);
+  const SC=acScale(),cr=chordAt(sec,res||'bar'),n=SC.length,i=SC.indexOf(cr);
   const tones=n>=5?[cr,SC[(i+2)%n],SC[(i+4)%n],SC[(i+6)%n]]:SC.slice(); // stacked thirds inside the scale
   return {SC,cr,tones:[...new Set(tones)]};
 }
@@ -2328,9 +2350,8 @@ function drawAngelMod(){
     g.font=`700 ${Math.round(12*d)}px ${canvasFont}`;g.textAlign='center';{const lb=NOTE[notes[j]%12]+(Math.floor(notes[j]/12)-1);g.lineWidth=3*d;g.strokeStyle='rgba(20,8,50,.85)';g.strokeText(lb,cx,H-8*d);g.fillStyle=on?'#fff':'rgba(255,245,220,.9)';g.fillText(lb,cx,H-8*d);}
     if(on&&Math.random()<.12)angelSpk.push({x:cx/W+(Math.random()-.5)*.06,y:.88,v:.35+Math.random()*.35,life:1,c:j});}
   // halo bar: hold for the full choir
-  const ha=F.all||F.latch;g.save();g.strokeStyle=ha?'#fff6c0':'rgba(255,230,150,.8)';g.lineWidth=(ha?4:2)*d;if(ha){g.shadowColor='#ffd860';g.shadowBlur=18*d;}
-  g.beginPath();g.ellipse(W/2,top*.55,W*(.24+.22*F.spread),top*.28,0,0,6.283);g.stroke();g.restore();
-  g.font=`700 ${Math.round(10*d)}px ${canvasFont}`;g.textAlign='center';g.fillStyle=ha?'#4a2a00':'rgba(80,50,0,.75)';g.fillText(F.halo?`${VOWEL_NAMES[Math.min(4,Math.round(F.vowel*4))]} · SPREAD ${Math.round(F.spread*100)}%  (up/down vowel, left/right spread)`:F.latch?'CHOIR HELD (double-tap to release)':'HOLD HALO = FULL CHOIR  ·  up/down vowel, left/right spread',W/2,top*.55+4*d);
+  const ha=F.all||F.latch;drawHalo(g,W,H,d,top,F.spread,ha,t);
+  g.font=`700 ${Math.round(10*d)}px ${canvasFont}`;g.textAlign='center';g.lineWidth=3*d;g.strokeStyle='rgba(255,250,225,.85)';g.fillStyle='#4a2a00';{const _tx=F.halo?`${VOWEL_NAMES[Math.min(4,Math.round(F.vowel*4))]} · SPREAD ${Math.round(F.spread*100)}%  (up/down vowel, left/right spread)`:F.latch?'CHOIR HELD (double-tap to release)':'HOLD HALO = FULL CHOIR  ·  up/down vowel, left/right spread';g.strokeText(_tx,W/2,top*.55+4*d);g.fillText(_tx,W/2,top*.55+4*d);};
   // sparkles
   g.save();g.globalCompositeOperation='lighter';
   const sdt=Math.min(.05,(performance.now()-(drawAngelMod.at||performance.now()))/1000);drawAngelMod.at=performance.now();
@@ -2342,6 +2363,23 @@ function drawAngelMod(){
   g.fillText(`${({u:'Unison',f:'Fifths',t:'Triad',s:'Seventh',c:'Cluster',m:'Melody + choir'})[getV('fx','anHarm')]} · ${getV('fx','anVoices')} voices · ${({chamber:'Chamber',hall:'Hall',cath:'Cathedral',heaven:'Heaven',shimmer:'Shimmer'})[getV('fx','anRev')]}`,6*d,top+14*d);
   // the same curved glass as the FX pads
   const k=.06;crtBegin(out,W,H,d);crtWarp(B,out,W,H,d,k,'angelM');crtEnd(out,W,H,d,k,.22);
+}
+// pixel-art halo: thick golden ring with a dark rim, a bright highlight along its top edge and a glow
+let haloC=null;
+function drawHalo(g,W,H,d,top,spread,on,t){
+  const px=Math.max(2,Math.round(Math.min(W,H)/110)),lw=Math.ceil(W/px),lh=Math.ceil(top/px)+2;
+  if(!haloC||haloC.width!==lw||haloC.height!==lh){haloC=document.createElement('canvas');haloC.width=lw;haloC.height=lh;}
+  const c=haloC.getContext('2d'),im=c.createImageData(lw,lh),D=im.data,cx=lw/2,cy=lh*.48,rx=lw*(.24+.22*spread),ry=Math.max(3,lh*.3),th=on?1.9:1.45,pulse=on?.85+.15*Math.sin(t*6):1;
+  for(let y=0;y<lh;y++)for(let x=0;x<lw;x++){const ux=x+.5-cx,uy=y+.5-cy,e=Math.hypot(ux/rx,uy/ry)||1e-6,gr=Math.hypot(ux/(rx*rx),uy/(ry*ry))/e||1,dist=(e-1)/gr; // even thickness all round
+    if(Math.abs(dist)>th+1)continue;const o=(y*lw+x)*4;let r,gg,b;
+    if(Math.abs(dist)>th){r=110;gg=70;b=0;}                                   // dark rim
+    else if(y<cy&&dist<0){r=255;gg=250;b=210;}                               // highlight on the upper inner edge
+    else if(dist>th*.3){r=214;gg=150;b=20;}                                  // shaded outer edge
+    else{r=255;gg=212;b=60;}                                                 // gold
+    D[o]=Math.min(255,r*pulse+(on?20:0));D[o+1]=Math.min(255,gg*pulse+(on?15:0));D[o+2]=b;D[o+3]=255;}
+  c.putImageData(im,0,0);
+  g.save();g.imageSmoothingEnabled=true;g.globalAlpha=on?.9:.55;g.filter=`blur(${Math.round((on?10:6)*d)}px)`;g.drawImage(haloC,0,0,lw*px,lh*px);g.restore(); // glow
+  g.save();g.imageSmoothingEnabled=false;g.drawImage(haloC,0,0,lw*px,lh*px);g.restore();
 }
 let skyImg=null;
 function angelSky(g,c,W,H){
@@ -2412,7 +2450,7 @@ const MENUS={
   stut:[{k:'slide',l:'Slide',opts:[['Pitch','p'],['Filter','f'],['Both','b']]},{k:'range',l:'Range',opts:[3,5,7,12,24].map(v=>['±'+v,v])}],
   tape:[{k:'len',l:'Length',opts:[['½ beat',.5],['1 beat',1],['2 beats',2],['4 beats',4]]},{k:'spin',l:'Spin',opts:[['On',true],['Off',false]]}],
   viewer:[{k:'vfx',l:'Effects',opts:[['Both pads','both'],['Pad A only','xy'],['Pad B only','xy2'],['None (clean)','none']]},{k:'vfit',l:'View',opts:[['Fit whole frame','contain'],['Fill window','cover']]},{k:'vcrt',l:'Screen',opts:[['Clean','off'],['Old TV (subtle)','soft'],['Old TV (strong)','hard']]},{k:'vrot',l:'Rotate',opts:[['0°',0],['90° ↻',90],['180°',180],['270° ↻',270]]},{k:'vscope',l:'Scope',opts:[['Off','none'],['Pad A','xy'],['Pad B','xy2'],['Both pads','both']]},{k:'vgrid',l:'Grid',opts:[['On','on'],['Off','off']]}],
-  angelM:[{k:'anHarm',l:'Harmony',opts:[['Unison','u'],['Fifths','f'],['Triad','t'],['Seventh','s'],['Cluster','c'],['Melody + choir','m']]},{k:'anRev',l:'Reverb',opts:[['Chamber','chamber'],['Hall','hall'],['Cathedral','cath'],['Heaven','heaven'],['Shimmer','shimmer']]},{k:'anOct',l:'Octave',opts:[['Low',-12],['Mid',0],['High',12],['Heaven',24]]}],
+  angelM:[{k:'anHarm',l:'Harmony',opts:[['Unison','u'],['Fifths','f'],['Triad','t'],['Seventh','s'],['Cluster','c'],['Melody + choir','m']]},{k:'anRev',l:'Reverb',opts:[['Chamber','chamber'],['Hall','hall'],['Cathedral','cath'],['Heaven','heaven'],['Shimmer','shimmer']]},{k:'anFollow',l:'Chords',opts:[['Every bar','bar'],['Half bar','beat'],['Hold','hold']]}],
   aquaM:[{k:'aqNotes',l:'Notes',opts:[['Chords','c'],['Melody','m'],['Harmony','h']]},{k:'aqOct',l:'Range',opts:[['Low',-12],['Mid',0],['High',12]]}],
   acidM:[{k:'acPat',l:'Scale',opts:[['Song','song'],['Minor pent.','pent'],['Phrygian','phry'],['Blues','blues'],['Dorian','dorian'],['Root + 5th','octave']]},{k:'acWave',l:'Wave',opts:[['Saw','sawtooth'],['Square','square']]},{k:'acRate',l:'Steps',opts:[['1/8',.5],['1/16',.25],['1/32',.125]]}],
   pitch:[{k:'mode',l:'Mode',opts:[['Speed','s'],['Keep tempo','k'],['Keep pitch','t']]},{k:'glide',l:'Glide',opts:[0,60,120,250,500,800].map(v=>[v+'ms',v])}]
