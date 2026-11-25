@@ -134,6 +134,8 @@ font-weight:700;font-size:13px;letter-spacing:.3px;touch-action:none;text-align:
 .acsteps b{height:22px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;background:#102000;color:#6a8f40;box-shadow:var(--sunken);cursor:pointer;user-select:none;overflow:hidden}
 .acsteps b.now{background:#c6ff00;color:#000}.acsteps b.acc{color:#d8ff8a}.acsteps b.mute{background:#300;color:#a55}.acsteps b.rest{color:#3a5020}
 .acmain{flex:1;display:flex;gap:4px;min-height:0}.acmain .xyc{flex:1}
+.visbtn{position:absolute;top:20px;right:14px;z-index:2;font:inherit;font-size:10px;font-weight:700;padding:2px 6px;background:var(--face);box-shadow:var(--raised);border:0;color:#000;cursor:pointer}
+.visbtn.on{box-shadow:var(--sunken);background:var(--dither);color:#000080}
 .acbtns{display:flex;flex-direction:column;gap:4px;width:74px}.acbtns .pad{flex:1;min-height:0;font-size:12px}
 .slot.tall .ppads{grid-template-columns:1fr 1fr}
 .ppads .pad{font-size:13px;min-height:28px}
@@ -1196,6 +1198,7 @@ const FXSPEC={
     {k:'smHold',l:'Hold',min:0,max:100,v:80,f:pct},
     {k:'smMosh',l:'Datamosh',min:0,max:100,v:100,f:pct}],
   aqua:[{h:'AQUA'},
+    {k:'aqVis',l:'Visuals only (module)',toggle:1,v:false},
     {k:'aqDepth',l:'Muffle',min:0,max:100,v:70,f:pct},
     {k:'aqSway',l:'Sway',min:0,max:100,v:50,f:pct},
     {k:'aqBubS',l:'Bubble sounds',min:0,max:100,v:40,f:pct},
@@ -1209,6 +1212,7 @@ const FXSPEC={
     {k:'aqBubV',l:'Bubbles',min:0,max:100,v:50,f:pct},
     {k:'aqWeed',l:'Seaweed',min:0,max:100,v:50,f:pct}],
   acid:[{h:'ACID'},
+    {k:'acVis',l:'Visuals only (module)',toggle:1,v:false},
     {k:'acSyn',l:'Acid synth',min:0,max:100,v:65,f:pct},
     {k:'acWave',l:'Wave',chips:[['Saw','sawtooth'],['Square','square']],v:'sawtooth'},
     {k:'acPat',l:'Pattern',chips:[['Follow song',-1],['1',0],['2',1],['3',2]],v:-1},
@@ -1337,7 +1341,7 @@ function pushFX(){
     if(ax)eff[ax]=Math.max(eff[ax],dz(F.gx));
     if(ay)eff[ay]=Math.max(eff[ay],dz(1-F.gy));
   }
-  if(onPage('aquaM')&&fx.aquaM.on)eff.aqua=Math.max(eff.aqua,.35+.65*fx.aquaM.gy);
+  if(aqLive())eff.aqua=Math.max(eff.aqua,.35+.65*fx.aquaM.gy);
   if(acLive())eff.acid=Math.max(eff.acid,.9);
   send({t:'xy',on:true,glitch:eff.glitch,warble:eff.warble});
   send({t:'crush',amt:eff.crush*getV('fx','crMax')/100});
@@ -1352,7 +1356,7 @@ function pushFX(){
   echoSend.gain.setTargetAtTime(eff.echo,t,tc);
   revSend.gain.setTargetAtTime(eff.reverb*1.2*getV('fx','rLevel')/100,t,tc);
   if(aq.lp){ // aqua
-    const a=eff.aqua,dp=getV('fx','aqDepth')/100,sw=onPage('aquaM')&&fx.aquaM.on?fx.aquaM.gx:getV('fx','aqSway')/100;
+    const a=eff.aqua,dp=getV('fx','aqDepth')/100,sw=aqLive()?fx.aquaM.gx:getV('fx','aqSway')/100;
     aq.lp.frequency.setTargetAtTime(a>0?20000*Math.pow(320/20000,a*(.35+.65*dp)):20000,t,.03);
     aq.lfo2G.gain.setTargetAtTime(a*sw*450,t,.05);
     aq.wet.gain.setTargetAtTime(a*(.3+.5*sw),t,.03);aq.dry.gain.setTargetAtTime(1-a*.3,t,.03);
@@ -1368,7 +1372,8 @@ function pushFX(){
 // ---- acid: sweep the resonant filter on every step of the beat grid ----
 const ACC=[1,.45,.8,.35,.95,.55,.3,.85,1,.4,.7,.5,.9,.35,.6,.75]; // accent pattern
 let acidEnv=0;
-const acLive=()=>fx.acidM.on&&onPage('acidM');
+const acVisLive=()=>fx.acidM.on&&onPage('acidM'),acLive=()=>acVisLive()&&!getV('fx','acVis');
+const aqVisLive=()=>fx.aquaM.on&&onPage('aquaM'),aqLive=()=>aqVisLive()&&!getV('fx','aqVis');
 function acP(k){if(acLive()){if(k==='acEnv')return fx.acidM.gx*100;if(k==='acRes')return (1-fx.acidM.gy)*100;}return getV('fx',k);}
 function acidStep(pos){ // envelope (0..1) for a position in samples
   const step=60/bpm*sr*getV('fx','acRate'),b=(pos-offSec*sr)/step,i=Math.floor(b),ph=b-i;
@@ -1376,7 +1381,8 @@ function acidStep(pos){ // envelope (0..1) for a position in samples
 }
 function acidTick(){
   if(!ac.lp)return;const a=eff.acid;
-  if(a<=0){if(ac.off)return;ac.off=1;acidEnv=0;for(const f of [ac.lp,ac.lp2]){f.frequency.setTargetAtTime(20000,ctx.currentTime,.02);f.Q.setTargetAtTime(0,ctx.currentTime,.02);}return;}
+  if(a<=0){acidEnv=acVisLive()&&lenS&&bpm?acidStep(playing?posQ+(performance.now()-posAt)/1000*rateR*sr:posS):0;
+    if(ac.off)return;ac.off=1;for(const f of [ac.lp,ac.lp2]){f.frequency.setTargetAtTime(20000,ctx.currentTime,.02);f.Q.setTargetAtTime(0,ctx.currentTime,.02);}return;}
   ac.off=0;
   const pos=playing?posQ+(performance.now()-posAt)/1000*rateR*sr:posS;
   const e=lenS?acidStep(pos):0;acidEnv=e;
@@ -2101,7 +2107,7 @@ const MODS={
   rev:{name:'REVERSE',ic:'#ffe000',c:'var(--rev)',latch:'rev',narrow:true,build(mb){
     mb.innerHTML='<div class="pad big">REVERSE</div>';UI.pads.rev=mb.firstChild;toggleable(UI.pads.rev,'rev',setRev);}},
   aquaM:{name:'AQUA',ic:'#00b0c0',c:'#00e0c0',latch:'aquaM',build(mb){
-    mb.innerHTML='<div class="xyc"><canvas></canvas></div>';const c=mb.querySelector('canvas');UI.aquaCan=c;
+    mb.innerHTML='<div class="xyc"><canvas></canvas><button class="visbtn" data-k="aqVis" title="Only the picture: no sound changes">VISUAL ONLY</button></div>';const c=mb.querySelector('canvas');UI.aquaCan=c;bindVisBtn(mb);
     bindXY(mb.firstChild,c,fx.aquaM,()=>pushFX(),'aquaM');
     mb.firstChild.addEventListener('pointerdown',e=>{ // every touch lets out a burst of bubbles: left = low notes, right = high
       const r=c.getBoundingClientRect(),x=clamp((e.clientX-r.left)/r.width),y=clamp((e.clientY-r.top)/r.height);
@@ -2109,8 +2115,8 @@ const MODS={
     });}},
   acidM:{name:'ACID 303',ic:'#60c000',c:'#c6ff00',latch:'acidM',build(mb){
     mb.innerHTML=`<div class="acid303"><div class="acsteps">${Array.from({length:16},(_,i)=>`<b data-i="${i}"></b>`).join('')}</div>
-      <div class="acmain"><div class="xyc"><canvas></canvas></div><div class="acbtns"><div class="pad" data-h="acc">ACCENT</div><div class="pad" data-h="sld">SLIDE</div></div></div></div>`;
-    const c=mb.querySelector('canvas');UI.acidCan=c;UI.acidLeds=[...mb.querySelectorAll('.acsteps b')];
+      <div class="acmain"><div class="xyc"><canvas></canvas><button class="visbtn" data-k="acVis" title="Only the picture: no sound changes">VISUAL ONLY</button></div><div class="acbtns"><div class="pad" data-h="acc">ACCENT</div><div class="pad" data-h="sld">SLIDE</div></div></div></div>`;
+    bindVisBtn(mb);const c=mb.querySelector('canvas');UI.acidCan=c;UI.acidLeds=[...mb.querySelectorAll('.acsteps b')];
     bindXY(mb.querySelector('.xyc'),c,fx.acidM,()=>pushFX(),'acidM');
     UI.acidLeds.forEach(b=>b.addEventListener('click',()=>{const i=+b.dataset.i;fx.acidM.mute[i]=!fx.acidM.mute[i];acidLedKey='';}));
     mb.querySelectorAll('[data-h]').forEach(p=>{const k=p.dataset.h;
@@ -2122,11 +2128,17 @@ const MODS={
     mb.innerHTML='<div class="xyc"><canvas></canvas></div>';
     UI.gateCan=mb.querySelector('canvas');bindXY(mb.firstChild,UI.gateCan,fx.gate,gateFromXY,'gate');}}
 };
+function bindVisBtn(mb){ // VISUAL ONLY toggle inside a module screen
+  const b=mb.querySelector('.visbtn'),k=b.dataset.k,sync=()=>b.classList.toggle('on',!!getV('fx',k));sync();
+  b.addEventListener('pointerdown',e=>e.stopPropagation());
+  b.addEventListener('click',e=>{e.stopPropagation();setV('fx',k,!getV('fx',k));sync();pushFX();});
+  setInterval(sync,500);
+}
 /* ---------- AQUA module: a playable aquarium ---------- */
 function aquaBurst(x,y){
   const S=scn.aquaM||(scn.aquaM={bub:[],tb:[],pops:[],at:performance.now()});
   for(let k=0;k<6;k++)S.bub.push({x:x+(Math.random()-.5)*.04,y:y+Math.random()*.03,r:.008+Math.random()*.02,v:.18+Math.random()*.3,ph:Math.random()*6});
-  if(!ctx||!aq.bub||ctx.state!=='running')return;
+  if(!ctx||!aq.bub||ctx.state!=='running'||getV('fx','aqVis'))return; // visuals only: silent bubbles
   const notes=bubbleNotes(lenS?heardPos()/sr:0);if(!notes.length)return;
   const i0=Math.round(x*(notes.length-1)),st=bpm?60/bpm/8:.06,n=3+Math.floor((1-y)*3),a=.6+.4*(1-y);
   for(let k=0;k<n;k++)bubble(a*(1-k*.1),notes[Math.min(notes.length-1,i0+k)],ctx.currentTime+.01+k*st);
@@ -2638,8 +2650,8 @@ function viewerAmts(){
   const m=getV('viewer','vfx');let a={};
   if(m==='both'){const p=padAmts('xy'),q=padAmts('xy2');a={...p};for(const k in q)a[k]=Math.max(a[k]||0,q[k]);}
   else if(m!=='none')a=padAmts(m);
-  if(onPage('aquaM')&&fx.aquaM.on)a={...a,aqua:Math.max(a.aqua||0,.35+.65*fx.aquaM.gy)};
-  if(acLive())a={...a,acid:Math.max(a.acid||0,.9)};
+  if(aqVisLive())a={...a,aqua:Math.max(a.aqua||0,.35+.65*fx.aquaM.gy)};
+  if(acVisLive())a={...a,acid:Math.max(a.acid||0,.9)};
   return a;
 }
 function rotSrc(src,key){ // returns the frame turned by the viewer's Rotate setting
