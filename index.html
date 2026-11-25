@@ -179,7 +179,9 @@ radial-gradient(ellipse at center,transparent 50%,rgba(0,0,0,var(--vig,.4)) 100%
 }
 body.min #viewer{opacity:0;pointer-events:none}
 #viewer .mbar{max-height:18px}
-#vbox{flex:1;min-height:0;position:relative;background:#000;box-shadow:var(--sunken);padding:2px}
+#vbox{flex:1;min-height:0;position:relative;background:#000;box-shadow:var(--sunken);padding:2px;touch-action:none}
+.vlk.on{box-shadow:var(--sunken)!important;background:var(--dither)!important}
+.vlk i{display:inline-block;width:9px;height:9px;margin-right:4px;border:1px solid #000;vertical-align:-1px}
 #vcan{position:absolute;inset:2px;width:calc(100% - 4px);height:calc(100% - 4px)}
 #vMsg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#808080;font-size:13px;pointer-events:none}
 /* module menu bars */
@@ -299,7 +301,7 @@ body.editing #edbar{display:flex}
 
 <div id="viewer">
   <div class="tbar"><span class="ticon"><svg viewBox="0 0 16 16"><rect x="1.5" y="3" width="13" height="10" fill="#000" stroke="#fff" stroke-width="1"/><path d="M6.5 5.5v5l4-2.5z" fill="#33ff66"/></svg></span><span id="vTitle">Video viewer</span><span style="flex:1"></span><span class="tbtns"><i role="button" aria-label="Minimize">_</i><i role="button" aria-label="Maximize">□</i><i role="button" aria-label="Close">×</i></span></div>
-  <div class="mbar" data-id="viewer"><button class="mi" data-j="0"></button><button class="mi" data-j="1"></button><button class="mi" data-j="2"></button><button class="mi" data-j="3"></button><button class="mi" data-j="4"></button><button class="mi" data-j="5"></button></div>
+  <div class="mbar" data-id="viewer"><button class="mi" data-j="0"></button><button class="mi" data-j="1"></button><button class="mi" data-j="2"></button><button class="mi" data-j="3"></button><button class="mi" data-j="4"></button><button class="mi" data-j="5"></button><span style="flex:1"></span><button class="mi vlk" data-p="xy" title="Lock Pad A so touching the viewer doesn't move it"></button><button class="mi vlk" data-p="xy2" title="Lock Pad B so touching the viewer doesn't move it"></button></div>
   <div id="vbox"><canvas id="vcan"></canvas><div id="vMsg">Load a video to see it here</div></div>
 </div>
 
@@ -2023,7 +2025,7 @@ const mpop=document.createElement('div');mpop.id='mpop';document.body.appendChil
 let mpopBtn=null;
 function refreshMenus(){
   $$('.mbar').forEach(bar=>{const id=bar.dataset.id;
-    bar.querySelectorAll('.mi').forEach(b=>{const m=MENUS[id][+b.dataset.j],v=getV(id,m.k),o=m.opts.find(x=>x[1]===v);b.textContent=m.l+': '+(o?o[0]:v);});});
+    bar.querySelectorAll('.mi[data-j]').forEach(b=>{const m=MENUS[id][+b.dataset.j],v=getV(id,m.k),o=m.opts.find(x=>x[1]===v);b.textContent=m.l+': '+(o?o[0]:v);});});
 }
 function closeMenu(){mpop.classList.remove('open');if(mpopBtn)mpopBtn.classList.remove('open');mpopBtn=null;}
 function openMenu(btn,id,j){
@@ -2398,21 +2400,55 @@ setViewer(store.get('remixer.viewer',true));
 $('#viewBtn').onclick=()=>setViewer(document.body.classList.contains('noviewer'));
 $('#viewer .tbtns i:last-child').addEventListener('click',e=>{e.stopPropagation();setViewer(false);});
 const vPan=store.get('remixer.vpan',{x:0,y:0}),vOver={x:0,y:0};
-{ // fill-window mode: drag the picture around inside the frame (double-click to recenter)
-  const box=$('#vbox');let pid=null,lx=0,ly=0;
+// the big viewer is a touch pad too: it drives every pad that isn't locked (lock buttons on its menu bar)
+const vLock=store.get('remixer.vlock',{xy:false,xy2:false});
+function refreshVLock(){$$('.vlk').forEach(b=>{const p=b.dataset.p,col=getV(p,'cFg')||'#0f0';b.classList.toggle('on',!!vLock[p]);
+  b.innerHTML=`<i style="background:${col}"></i>${p==='xy'?'Pad A':'Pad B'}: ${vLock[p]?'Locked':'Live'}`;});}
+$$('.vlk').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();const p=b.dataset.p;vLock[p]=!vLock[p];store.set('remixer.vlock',vLock);refreshVLock();}));
+refreshVLock();
+const livePads=()=>['xy','xy2'].filter(p=>!vLock[p]&&onPage(p));
+{ // fill-window mode: drag the picture around inside the frame (double-click to recenter).
+  // pans with Shift-drag / right-drag, or a plain drag when both pads are locked
+  const box=$('#vbox');let pid=null,lx=0,ly=0,mode=null,ctl=[],lastT=0,lastX=0,lastY=0;
   const isFill=()=>getV('viewer','vfit')==='cover'&&vHi;
-  box.addEventListener('pointerdown',e=>{if(!isFill())return;pid=e.pointerId;box.setPointerCapture(pid);lx=e.clientX;ly=e.clientY;box.style.cursor='grabbing';});
+  const upd=e=>{const r=vcan.getBoundingClientRect(),x=clamp((e.clientX-r.left)/r.width),y=clamp((e.clientY-r.top)/r.height);
+    for(const p of ctl){fx[p].gx=x;fx[p].gy=y;drawPad(p);}pushFX();};
+  box.addEventListener('pointerdown',e=>{
+    if(pid!=null)return;e.preventDefault();
+    const pads=livePads(),pan=isFill()&&(e.shiftKey||e.button===2||!pads.length);
+    if(!pan&&!pads.length)return;
+    pid=e.pointerId;box.setPointerCapture(pid);lx=e.clientX;ly=e.clientY;
+    if(pan){mode='pan';box.style.cursor='grabbing';return;}
+    mode='pad';ctl=pads;
+    const now=performance.now(),dbl=now-lastT<320&&Math.hypot(e.clientX-lastX,e.clientY-lastY)<40;lastT=dbl?0:now;lastX=e.clientX;lastY=e.clientY;
+    for(const p of ctl){fx[p].hold=true;fx[p].on=true;}upd(e);
+    if(dbl)for(const p of ctl)toggleLatch(p); // double-tap pins / unpins, like on the pads
+  });
   box.addEventListener('pointermove',e=>{
-    if(e.pointerId!==pid)return;const d=devicePixelRatio||1,dx=(e.clientX-lx)*d,dy=(e.clientY-ly)*d;lx=e.clientX;ly=e.clientY;
+    if(e.pointerId!==pid)return;
+    if(mode==='pad'){upd(e);return;}
+    const d=devicePixelRatio||1,dx=(e.clientX-lx)*d,dy=(e.clientY-ly)*d;lx=e.clientX;ly=e.clientY;
     if(vOver.x>1)vPan.x=Math.max(-1,Math.min(1,vPan.x+2*dx/vOver.x));
     if(vOver.y>1)vPan.y=Math.max(-1,Math.min(1,vPan.y+2*dy/vOver.y));
   });
-  const end=e=>{if(e.pointerId!==pid)return;pid=null;box.style.cursor='';store.set('remixer.vpan',vPan);};
+  const end=e=>{if(e.pointerId!==pid)return;pid=null;box.style.cursor='';
+    if(mode==='pad'){for(const p of ctl){fx[p].hold=false;if(!fx[p].latch)fx[p].on=false;drawPad(p);}pushFX();ctl=[];}
+    else store.set('remixer.vpan',vPan);mode=null;};
   box.addEventListener('pointerup',end);box.addEventListener('pointercancel',end);
-  box.addEventListener('dblclick',()=>{vPan.x=vPan.y=0;store.set('remixer.vpan',vPan);});
-  setInterval(()=>{box.style.cursor=pid!=null?'grabbing':isFill()?'grab':'';box.style.touchAction=isFill()?'none':'';},300);
+  box.addEventListener('contextmenu',e=>e.preventDefault());
+  box.addEventListener('dblclick',()=>{if(!livePads().length){vPan.x=vPan.y=0;store.set('remixer.vpan',vPan);}});
+  setInterval(()=>{box.style.cursor=pid!=null?(mode==='pan'?'grabbing':'crosshair'):livePads().length?'crosshair':isFill()?'grab':'';},300);
 }
-$$('#viewer .mi').forEach(b=>b.onclick=()=>openMenu(b,'viewer',+b.dataset.j));
+// show where each live pad's finger is on the viewer
+function viewerMarks(){
+  const g=vcan.getContext('2d'),W=vcan.width,H=vcan.height,d=devicePixelRatio||1;
+  for(const p of ['xy','xy2']){const F=fx[p];if(vLock[p]||!F.on||!onPage(p))continue;
+    const x=F.gx*W,y=F.gy*H,r=14*d,col=getV(p,'cFg')||'#0f0';
+    g.save();g.strokeStyle=col;g.lineWidth=2*d;g.shadowColor=col;g.shadowBlur=10*d;
+    g.beginPath();g.arc(x,y,r,0,6.283);g.stroke();g.beginPath();g.moveTo(x-r*1.7,y);g.lineTo(x-r*.5,y);g.moveTo(x+r*.5,y);g.lineTo(x+r*1.7,y);g.moveTo(x,y-r*1.7);g.lineTo(x,y-r*.5);g.moveTo(x,y+r*.5);g.lineTo(x,y+r*1.7);g.stroke();
+    g.shadowBlur=0;g.font=`700 ${Math.round(11*d)}px ${canvasFont}`;g.fillStyle=col;g.fillText(p==='xy'?'A':'B',x+r+3*d,p==='xy'?y-r*.6:y+r*1.2);g.restore();}
+}
+$$('#viewer .mi[data-j]').forEach(b=>b.onclick=()=>openMenu(b,'viewer',+b.dataset.j));
 function viewerAmts(){
   const m=getV('viewer','vfx');let a={};
   if(m==='both'){const p=padAmts('xy'),q=padAmts('xy2');a={...p};for(const k in q)a[k]=Math.max(a[k]||0,q[k]);}
@@ -2447,6 +2483,7 @@ function drawViewer(){
   $('#vMsg').style.display=vHi||lenS?'none':'';
   $('#vTitle').textContent=vHi?'Video viewer - '+$('#song').textContent:'Video viewer';
   renderVideoTo(vcan,d,'viewer',{contain:getV('viewer','vfit')==='contain',pan:vPan,over:vOver});
+  viewerMarks();
 }
 // lay the pads' oscilloscope traces (in their own colours, with their glow) over the viewer
 function scopeOver(cv,force){
