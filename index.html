@@ -996,7 +996,7 @@ $('#sheet').addEventListener('click',e=>{
 });
 
 /* ---------- waveform ---------- */
-const BUILD='2026-11-26 06:02 UTC'; // bumped on every save, so a phone can prove which copy it is running
+const BUILD='2026-11-26 08:33 UTC'; // bumped on every save, so a phone can prove which copy it is running
 {
   const dlg=$('#about');
   $('#buildStamp').textContent='build '+BUILD;
@@ -1449,7 +1449,7 @@ function getV(ns,k){if(ns==='aquaM'||ns==='acidM'||ns==='angelM')ns='fx';const c
 function setV(ns,k,v){if(ns==='aquaM'||ns==='acidM'||ns==='angelM')ns='fx';(cfg[ns]=cfg[ns]||{})[k]=v;store.set('remixer.cfg',cfg);applyCfg(ns);refreshMenus();}
 function cv(id){const o={};SPEC[id].forEach(r=>{if(r.k)o[r.k]=getV(id,r.k);});return o;}
 function panelRows(id){
-  if(SPEC[id])return SPEC[id].map(r=>r.h?r:{...r,ns:id});
+  if(SPEC[id])return SPEC[id].map(r=>r.h?r:{...r,ns:r.ns||id}); // a row may name its own namespace, so a merged module can reuse another's settings
   if(SCREENS[id])return [{h:id==='wave'?'WAVEFORM':'TEMPO DISPLAY',c:'#33ff66'},...(id==='wave'?[{k:'snap',l:'Snap trim to beat',toggle:1,ns:'wave'}]:[]),...screenRows(id,id)];
   const a=getV(id,'ax'),b=getV(id,'ay');
   const rows=[{h:'AXES',c:'#e8eaf0'},{k:'ax',l:'X axis →',select:AXFX,ns:id},{k:'ay',l:'Y axis ↑',select:AXFX,ns:id}];
@@ -2765,10 +2765,6 @@ const MODS={
       p.addEventListener('pointerup',end);p.addEventListener('pointercancel',end);
       p.addEventListener('contextmenu',e=>e.preventDefault());
     });}},
-  tape:{name:'TAPE STOP',ic:'#ff0000',c:'var(--tape)',latch:'tape',build(mb){
-    mb.innerHTML='<div class="pad big">STOP</div>';UI.pads.tape=mb.firstChild;toggleable(UI.pads.tape,'tape',setTape);}},
-  rev:{name:'REVERSE',ic:'#ffe000',c:'var(--rev)',latch:'rev',narrow:true,build(mb){
-    mb.innerHTML='<div class="pad big">REVERSE</div>';UI.pads.rev=mb.firstChild;toggleable(UI.pads.rev,'rev',setRev);}},
   aquaM:{name:'AQUA',ic:'#00b0c0',c:'#00e0c0',latch:'aquaM',vis:'aqVis',build(mb){
     mb.innerHTML='<div class="xyc"><canvas></canvas></div>';const c=mb.querySelector('canvas');UI.aquaCan=c;bindVisBtn(mb);
     bindXY(mb.firstChild,c,fx.aquaM,()=>pushFX(),'aquaM');
@@ -2860,14 +2856,17 @@ const MESH={
     return {v,f,spokes:true};}
 };
 // how each module's toy looks
+// the combined module borrows Tape Stop's settings, menu and reel; the values still live under 'tape'
+SPEC.rt=SPEC.tape.map(r=>r.h?{...r,h:'REVERSE · TAPE STOP'}:{...r,ns:'tape'});
 const CHAOS_STYLE={
   xy:{mesh:'ico',fx:'crt'},xy2:{mesh:'ico',fx:'crt'},stut:{mesh:'cube',fx:'glitch',col:'#ff40ff'},tape:{mesh:'reel',fx:'reel',col:'#ff3838'},
   pd:{mesh:'sphere',fx:'pulse',col:'#30e040'},pitch:{mesh:'octa',fx:'rainbow'},aquaM:{mesh:'sphere',fx:'liquid',col:'#00e0c0'},
-  acidM:{mesh:'sphere',fx:'goo',col:'#9cff2a'},angelM:{mesh:'torus',fx:'halo',col:'#ffd860'}
+  acidM:{mesh:'sphere',fx:'goo',col:'#9cff2a'},angelM:{mesh:'torus',fx:'halo',col:'#ffd860'},
+  rt:{mesh:'reel',fx:'reel',col:'#ff3838'}
 };
 const CH={open:false};
 // vaporwave palettes for each toy: [bright, deep]
-const VAPOR={xy:['#00f0ff','#ff4fd8'],xy2:['#ffb86b','#b967ff'],stut:['#ff2fa8','#05ffa1'],tape:['#ff9e7a','#7b5cff'],pd:['#5cffc7','#ff71ce'],pitch:['#fffb96','#b967ff'],aquaM:['#01cdfe','#b967ff'],acidM:['#b6ff3a','#ff71ce'],angelM:['#fffb96','#ff9ff3']};
+const VAPOR={xy:['#00f0ff','#ff4fd8'],xy2:['#ffb86b','#b967ff'],stut:['#ff2fa8','#05ffa1'],tape:['#ff9e7a','#7b5cff'],rt:['#ff9e7a','#7b5cff'],pd:['#5cffc7','#ff71ce'],pitch:['#fffb96','#b967ff'],aquaM:['#01cdfe','#b967ff'],acidM:['#b6ff3a','#ff71ce'],angelM:['#fffb96','#ff9ff3']};
 function chaosSky(g,W,H,d,t){ // sunset sky, striped sun, glowing grid floor, a few stars
   const hz=H*.64,sky=g.createLinearGradient(0,0,0,hz);sky.addColorStop(0,'#12002e');sky.addColorStop(.55,'#4a0e6b');sky.addColorStop(1,'#ff5fb4');g.fillStyle=sky;g.fillRect(0,0,W,hz);
   for(let i=0;i<26;i++){const x=hash1(i)*W,y=hash1(i+40)*hz*.6,tw=.4+.6*Math.abs(Math.sin(t*1.5+i));g.fillStyle=`rgba(255,240,255,${(.6*tw).toFixed(2)})`;g.fillRect(x,y,1.5*d,1.5*d);}
@@ -2892,7 +2891,7 @@ function openChaos(id){
   if(r&&r.right+8+W>innerWidth)w.style.left=Math.max(4,r.left-W-8)+'px';
   chaosInfo();requestAnimationFrame(chaosFrame);
 }
-function closeChaos(){if(CH.live)chaosDrive(false);if(CH.id==='tape'){send({t:'shuttle',v:null,spin:!!fx.tape.spin});fx.tape.wound=false;}CH.live=false;CH.open=false;$('#chaos').style.display='none';}
+function closeChaos(){if(CH.live)chaosDrive(false);if(CH.id==='tape'||CH.id==='rt'){send({t:'shuttle',v:null,spin:!!fx.tape.spin});fx.tape.wound=false;}CH.live=false;CH.open=false;$('#chaos').style.display='none';}
 // the mix: three motion axes (spin angle, tilt, how hard it's spinning) blended into every setting with its own fixed weights
 function chaosValue(r,i){
   const h=k=>hash1(CH.seed*97+i*31+k*7),w1=(1+Math.floor(h(1)*3))*(h(2)<.5?-1:1),w2=(h(3)-.5)*3,w3=(h(4)-.5)*2.4,ph=h(5);
@@ -2912,7 +2911,7 @@ function chaosDrive(on){
   if(id==='xy'||id==='xy2'||id==='aquaM'||id==='acidM'){const F=fx[id];if(on){F.on=true;F.gx=u;F.gy=1-v;}else if(!F.latch)F.on=false;pushFX();if(UI.padCan[id])drawPad(id);}
   else if(id==='stut'){if(on){const d=STUT_DIVS[Math.min(5,Math.floor(E*6))][0];if(fx.stut.active!==d)setStut(d);}else if(!fx.stut.latch)setStut(0);}
   else if(id==='pd'){if(!fx.pump.latch&&fx.pump.on!==on)setPump(on);}
-  else if(id==='tape'){ // spin the reel to wind the song: which way you spin is which way it goes, still = stopped
+  else if(id==='tape'||id==='rt'){ // spin the reel to wind the song: which way you spin is which way it goes, still = stopped
     const sp=CH.vy,mag=Math.max(0,Math.abs(sp)-.012)*55,v=on?(sp<0?-1:1)*Math.min(4,mag):0;
     if(v!==0){fx.tape.wound=true;send({t:'shuttle',v});}
     else if(fx.tape.wound){
@@ -3145,6 +3144,7 @@ const MENUS={
   acidM:[{k:'acPat',l:'Scale',opts:[['Song','song'],['Minor pent.','pent'],['Phrygian','phry'],['Blues','blues'],['Dorian','dorian'],['Root + 5th','octave']]},{k:'acWave',l:'Wave',opts:[['Saw','sawtooth'],['Square','square']]},{k:'acRate',l:'Steps',opts:[['1/8',.5],['1/16',.25],['1/32',.125]]}],
   pitch:[{k:'set',l:'Pads',opts:[['Classic','classic'],['Chromatic ±6','chrom'],['Chromatic up','chromup'],['Chromatic down','chromdn'],['Minor','minor'],['Major','major'],['4ths + 5ths','fifths'],['Wide','wide']]},{k:'mode',l:'Mode',opts:[['Speed','s'],['Keep tempo','k'],['Keep pitch','t']]},{k:'glide',l:'Glide',opts:[0,60,120,250,500,800].map(v=>[v+'ms',v])}]
 };
+MENUS.rt=MENUS.tape; // the merged module reuses Tape Stop's menu
 const mpop=document.createElement('div');mpop.id='mpop';document.body.appendChild(mpop);
 let mpopBtn=null;
 function refreshMenus(){
@@ -3166,13 +3166,20 @@ function openMenu(btn,id,j){
 document.addEventListener('pointerdown',e=>{if(mpopBtn&&!mpop.contains(e.target)&&!e.target.closest('.mi'))closeMenu();},true);
 
 // widths are in quarters of the screen: 1=¼, 2=½, 3=¾, 4=full
-const DEFAULT_LAYOUT=[{id:'xy',w:2,h:2},{id:'xy2',w:2,h:2},{id:'stut',w:4,h:1},{id:'tape',w:2,h:1},{id:'rev',w:2,h:1},{id:'pd',w:4,h:1}];
+const DEFAULT_LAYOUT=[{id:'xy',w:2,h:2},{id:'xy2',w:2,h:2},{id:'stut',w:4,h:1},{id:'rt',w:2,h:1},{id:'pd',w:4,h:1}];
 const WN={1:'¼',2:'½',3:'¾',4:'Full'};
 const widthsFor=id=>MODS[id]&&MODS[id].narrow?[1,2,3,4]:[2,3,4];
 const cloneL=l=>l.map(e=>({...e}));
 if(FRESH4){try{localStorage.removeItem('remixer.layout3');localStorage.removeItem('remixer.layout2');}catch(e){}}
 let layout=store.get('remixer.layout3',null);store.set('remixer.v',4);
 if(!Array.isArray(layout)){const old=store.get('remixer.layout2',null);layout=Array.isArray(old)?old.map(e=>e&&({...e,w:e.w===2?4:2})):cloneL(DEFAULT_LAYOUT);}
+// Reverse and Tape Stop became one module: fold an old layout's two entries into the first one's slot
+{ const i=layout.findIndex(e=>e&&(e.id==='rev'||e.id==='tape'));
+  if(i>=0&&!layout.some(e=>e&&e.id==='rt')){
+    const w=layout.filter(e=>e&&(e.id==='rev'||e.id==='tape')).reduce((m,e)=>Math.max(m,e.w||2),2);
+    layout[i]={id:'rt',w,h:layout[i].h||1};
+    layout=layout.filter((e,j)=>j===i||!e||(e.id!=='rev'&&e.id!=='tape'));
+  } }
 layout=layout.filter((e,i,a)=>e&&MODS[e.id]&&a.findIndex(x=>x&&x.id===e.id)===i)
   .map(e=>{let w=[1,2,3,4].includes(e.w)?e.w:2;if(!widthsFor(e.id).includes(w))w=2;return{id:e.id,w,h:[1,2,3].includes(e.h)?e.h:1,...(e.ic?{ic:e.ic}:{})};});
 const onPage=id=>layout.some(e=>e.id===id);
