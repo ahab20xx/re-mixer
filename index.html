@@ -2260,6 +2260,7 @@ const isViewer=key=>{const k=String(key||'').replace(/n$/,'');return k==='viewer
 // the dose, for the viewer only: the module panels and the pads keep their painted fish
 function radLevel(key){return isViewer(key)?(+getV('viewer','vrad')||0)/100:0;}
 const RAD_BONES=.5; // Hot and above: the fish come up as x-rays
+const FISHLIT=[];  // where the lit fish are this frame, so acid can be calmed behind them
 function drawFish(c,cx,cy,f,t,bones,glow){
   const P=FISHPAL[f.pal],L=Math.round(5+f.size*4),Hh=Math.round(2+f.size*1.6),dir=f.dir,sw=f.st==='hooked'?Math.sin(t*40)*1.2:Math.sin(t*6+f.ph)*.6;
   if(glow>0){ // acid in the water: the fish light up like they are under a blacklight
@@ -2301,7 +2302,7 @@ function drawFishing(c,lw,lh,sL,t,layer,bones,glow){
   const wh=lh-sL,Y=d=>sL+2+d*(wh-6),hx=Math.round(Math.max(2,Math.min(lw-3,FISH.px*lw))),bx=hx+Math.round(Math.sin(t*1.3)*1),by=sL+Math.round(Math.sin(bx*.35+t*2.2)*1.1)-1+Math.round(FISH.dip*3);
   const hy=Math.max(by+3,Math.round(Y(FISH.hd??.5)));
   if(layer==='under'){
-    if(fishOn)for(const f of FISH.fish){if(f.st==='jump')continue;drawFish(c,f.x*lw,Y(f.d),f,t,bones,glow);}
+    if(fishOn)for(const f of FISH.fish){if(f.st==='jump')continue;drawFish(c,f.x*lw,Y(f.d),f,t,bones,glow);if(glow>0)FISHLIT.push({x:f.x*lw,y:Y(f.d),r:4+f.size*4});}
     if(lineOn){pixLine(c,bx,by+3,hx+Math.round(Math.sin(t*.9)*1),hy,'rgba(220,230,240,.75)');
       const k=hx+Math.round(Math.sin(t*.9)*1); // hook: a little silver J with a barb
       c.fillStyle='#8892a0';[[0,0],[0,1],[0,2],[0,3],[1,4],[2,4],[3,3],[3,2]].forEach(([x,y])=>c.fillRect(k+x,hy+y,1,1));c.fillStyle='#eef3f8';c.fillRect(k,hy,1,2);c.fillRect(k+3,hy+1,1,1);
@@ -2314,7 +2315,7 @@ function drawFishing(c,lw,lh,sL,t,layer,bones,glow){
       c.fillStyle='#ffd23a';c.fillRect(bx,by-4,1,2);
       for(let dy=-2;dy<=2;dy++){const w=dy===-2||dy===2?1:2;c.fillStyle='#1a1a2e';c.fillRect(bx-w-1,by+dy,w*2+3,1);c.fillStyle=dy<=0?'#e3262e':'#ffffff';c.fillRect(bx-w,by+dy,w*2+1,1);}
       c.fillStyle='#ff8a8a';c.fillRect(bx-1,by-1,1,1);}
-    if(fishOn)for(const f of FISH.fish)if(f.st==='jump')drawFish(c,f.x*lw,sL-(-f.y)*wh*.9,f,t,bones,glow); // the leap out of the water
+    if(fishOn)for(const f of FISH.fish){if(f.st!=='jump')continue;const jy=sL-(-f.y)*wh*.9;drawFish(c,f.x*lw,jy,f,t,bones,glow);if(glow>0)FISHLIT.push({x:f.x*lw,y:jy,r:4+f.size*4});} // the leap out of the water
     for(const p of FISH.spl){c.fillStyle=p.l>.5?'#e8fbff':'#7fd8f0';c.fillRect(Math.round(p.x*lw),Math.round(sL+p.y*wh*.6),1,1);}
   }
 }
@@ -2359,6 +2360,7 @@ function drawScene(g,W,H,d,a,key){
       pRing(c,bx,by,r,'#d8f8ff');if(r>=2){c.fillStyle='#ffffff';c.fillRect(Math.round(bx-r*.45),Math.round(by-r*.45),r>=4?2:1,r>=4?2:1);c.fillStyle='#7fd8f0';c.fillRect(Math.round(bx+r*.4),Math.round(by+r*.4),1,1);}}
     S.bub=S.bub.filter(b=>b.y*lh>sL+1);
     const bones=radLevel(key)>=RAD_BONES,fglow=isViewer(key)?aca:0; // acid in the water lights the fish up
+    FISHLIT.length=0;
     drawFishing(c,lw,lh,sL,t,'under',bones,fglow);
     c.restore();
     // the surface: a rolling pixel wave line
@@ -2417,6 +2419,14 @@ function drawScene(g,W,H,d,a,key){
       S.tb=S.tb.filter(r=>r.age<r.life);
     }
   }else{S.tb.length=0;S.pops.length=0;}
+  if(aca>0&&FISHLIT.length){ // acid's own glare is loudest where the fish are, so dim a pocket behind each one
+    const k=W/lw;g.save();g.globalCompositeOperation='source-over';
+    for(const f of FISHLIT){const R=f.r*k*3.2,gr=g.createRadialGradient(f.x*k,f.y*k,0,f.x*k,f.y*k,R);
+      gr.addColorStop(0,`rgba(2,16,4,${(.62*Math.min(1,aca)).toFixed(3)})`);
+      gr.addColorStop(.55,`rgba(2,16,4,${(.34*Math.min(1,aca)).toFixed(3)})`);
+      gr.addColorStop(1,'rgba(2,16,4,0)');
+      g.fillStyle=gr;g.beginPath();g.arc(f.x*k,f.y*k,R,0,6.283);g.fill();}
+    g.restore();}
   // lay the pixel sprites over the picture with hard edges
   g.globalCompositeOperation='source-over';g.imageSmoothingEnabled=false;g.drawImage(L,0,0,lw*px,lh*px);g.imageSmoothingEnabled=true;
   g.restore();
