@@ -80,7 +80,7 @@ marked `adv:1` hide behind a "More settings" fold.
 `localStorage['remixer.cfg']`. The full set of keys the app writes:
 `remixer.cfg`, `remixer.layout3`, `remixer.layout2` (legacy, migrated),
 `remixer.v`, `remixer.font`, `remixer.viewer`, `remixer.mix`, `remixer.vlock`,
-`remixer.vpan`, `remixer.recfmt`, `remixer.chLive`, `remixer.more.*`,
+`remixer.vpan`, `remixer.recfmt`, `remixer.chLive`, `remixer.more.*`, `remixer.tapMode`,
 `remixer.dnbAdded` (one-time flag: puts the drum & bass module on an old
 saved layout once; removing the module afterwards keeps it removed).
 
@@ -185,6 +185,17 @@ Read the diffs, not the subject lines.
 
 Newest first. All of this is in `main`.
 
+- Aqua: touching the pad no longer plays bubble notes by default (visual
+  bubbles still appear). Setting `aqTap` "Sound on touch" turns it back on.
+- Song speed. The worklet has `tempo` (message `speed`), and **the ghost
+  timeline now moves at tempo × Pitch speed** (Speed/Keep-pitch modes), so
+  grid effects, loops, stutter and the drum module stay locked when the song
+  is sped up. Pitch Speed mode no longer jumps back on release. Reports carry
+  `gr` (timeline speed) → main-thread `ghostR`; `estPos`/`heardPos` use it.
+  Main thread: `speed` (0.5–2), `setSpeed()`, Tempo sheet has a Song speed
+  section; TAP sets speed or grid (`tapMode`, key `remixer.tapMode`). AUTO
+  resets grid and speed. New song resets speed to 1. Echo delay and bubble
+  timing use `bpm*speed`.
 - Drum & bass chops: hold a break and slide up (CHOP edit, 1/8 repeat, 1/16
   and 1/32 stutter with rising pitch) or down (half-time, reverse, 3-step
   triplet loop); slide sideways in the same row to swap breaks mid-chop.

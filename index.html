@@ -317,6 +317,10 @@ body.editing #edbar{display:flex}
 #sheetIn p,.sheetIn p{margin:0 8px 10px;font-size:11px;color:#000}
 .srow{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin:0 8px 5px}
 .srow button{height:34px;font-size:12px}
+#sheetSpd{font-size:20px;text-align:center;margin:4px 8px 8px;padding:5px;background:#000;color:#ffd84a;box-shadow:var(--sunken);font-family:var(--font);font-weight:700}
+.srow1{margin:0 8px 8px}.srow1 input{width:100%}
+#sheet .tm.on{box-shadow:var(--sunken);background:#000080;color:#fff}
+#sheetIn h3+p{margin-top:0}
 #sheetBpm{font-size:28px;text-align:center;margin:4px 8px 10px;padding:6px;background:#000;color:#33ff66;box-shadow:var(--sunken);font-family:var(--font);font-weight:700}
 #pickList{margin:0 8px}
 .pick{display:flex;justify-content:space-between;align-items:center;width:100%;padding:9px 10px;margin-bottom:4px;font-size:12px;font-weight:700}
@@ -351,7 +355,7 @@ body.editing #edbar{display:flex}
       <div id="bpmVal">---<small>BPM</small></div>
       <div id="dots"><i></i><i></i><i></i><i></i></div>
       <span class="latch cfg scr" id="tempoCfg" role="button" aria-label="Tempo display settings"></span>
-      <span class="latch" id="bpmAuto" role="button" aria-label="Auto-detect BPM" title="Go back to the detected BPM">AUTO</span>
+      <span class="latch" id="bpmAuto" role="button" aria-label="Auto-detect BPM" title="Go back to the detected BPM and normal speed">AUTO</span>
     </button>
     <button id="tap">TAP</button>
   </div>
@@ -408,8 +412,14 @@ body.editing #edbar{display:flex}
 
 <div id="sheet">
   <div id="sheetIn">
-    <h3>Tempo</h3>
-    <p>Watch the beat dots — the first dot should flash on the kick. Use TAP while playing to fix it, or adjust here.</p>
+    <h3>Song speed</h3>
+    <p>Speed the song up or down while it plays. Every beat-locked module follows.</p>
+    <div id="sheetSpd">120.0 BPM · 100.0%</div>
+    <div class="srow1"><input type="range" id="spdSl" min="-50" max="50" step="0.1" value="0" aria-label="Song speed"></div>
+    <div class="srow"><button data-a="s-1">−1</button><button data-a="s-0.1">−0.1</button><button data-a="s+0.1">+0.1</button><button data-a="s+1">+1</button></div>
+    <div class="srow"><button data-a="s1">Normal</button><button class="tm" data-a="tapspeed">TAP = speed</button><button class="tm" data-a="tapgrid">TAP = grid</button><button data-a="close">Done</button></div>
+    <h3>Beat grid</h3>
+    <p>Watch the beat dots — the first dot should flash on the kick. Set TAP = grid and tap while playing to fix it, or adjust here.</p>
     <div id="sheetBpm">120.0</div>
     <div class="srow"><button data-a="-1">−1</button><button data-a="-0.1">−0.1</button><button data-a="+0.1">+0.1</button><button data-a="+1">+1</button></div>
     <div class="srow"><button data-a="half">÷2</button><button data-a="double">×2</button><button data-a="nudge-">◂ grid</button><button data-a="nudge+">grid ▸</button></div>
@@ -442,6 +452,7 @@ class Remixer extends AudioWorkletProcessor{
     this.smT=0;this.smAmt=0;this.smGrain=90;this.smSpread=400;this.smHold=.8;this.GN=131072;
     this.gL=new Float32Array(this.GN);this.gR=new Float32Array(this.GN);this.gw=0;this.gHop=0;
     this.grains=[];for(let i=0;i<10;i++)this.grains.push({on:false,s:0,a:0,n:1});
+    this.tempo=1;this.tmT=1; // song speed set from the tempo controls; the whole timeline runs at it
     this.psOn=false;this.psMode='s';this.psT=1;this.psR=1;this.psK=1;this.psMix=0;this.psSync=false;
     this.PSN=16384;this.psBL=new Float32Array(this.PSN);this.psBR=new Float32Array(this.PSN);this.psW=Math.round(sr*.07);this.psPh=0;this.psWi=0;this.kMix=k(.012);
     this.sp=1;this.spC=1;this.kSp=k(.012);this.crA=0;this.crC=0;this.crL=0;this.crR=0;this.crH=1;this.crQ=32768;
@@ -487,6 +498,7 @@ class Remixer extends AudioWorkletProcessor{
         if(m.mode!==this.psMode||!m.on)this.psSync=true;
         this.psMode=m.mode;this.psOn=m.on;this.psT=m.on?m.ratio:1;
         this.psK=m.glide>0?1-Math.exp(-1/(sampleRate*m.glide/3000)):1;break;
+      case 'speed':this.tmT=Math.max(.25,Math.min(4,m.v));break;
       case 'crush':this.crA=m.amt;this.crH=1+Math.floor(m.amt*20);this.crQ=Math.pow(2,Math.max(2,15-m.amt*12));break;
       case 'xyp':Object.assign(this.xp,m.p);break;
       case 'xy':this.glOn=m.on&&m.glitch>0;this.glAmt=m.glitch;this.wOn=m.on;this.wAmt=m.warble;break;
@@ -561,7 +573,7 @@ class Remixer extends AudioWorkletProcessor{
     const N=this.PSN;let p=this.psWi-d;if(p<0)p+=N;
     const i0=Math.floor(p),fr=p-i0;return buf[i0&(N-1)]*(1-fr)+buf[(i0+1)&(N-1)]*fr;
   }
-  report(force){if(this.playing||force)this.port.postMessage({t:'pos',ct:typeof currentTime!=='undefined'?currentTime+128/sampleRate:null,p:this.ghost,q:this.pos,r:this.playing?this.rate*this.dir*(this.st?this.spC:1)*(this.psMode!=='k'?this.psR:1):0});}
+  report(force){if(this.playing||force)this.port.postMessage({t:'pos',ct:typeof currentTime!=='undefined'?currentTime+128/sampleRate:null,p:this.ghost,q:this.pos,r:this.playing?this.rate*this.dir*(this.st?this.spC:1)*(this.psMode!=='k'?this.psR:1)*this.tempo:0,gr:(this.tape===4?this.rate*this.dir:1)*(this.psMode!=='k'?this.psR:1)*this.tempo});}
   process(_,outs){
     const o=outs[0],oL=o[0],oR=o[1]||o[0],N=oL.length;
     const L=this.L,R=this.R,n=this.n,X=this.xp;
@@ -569,8 +581,8 @@ class Remixer extends AudioWorkletProcessor{
     for(let i=0;i<N;i++){
       this.run+=((this.playing?1:0)-this.run)*this.kRun;
       if(!this.playing&&this.run<1e-4){this.run=0;oL[i]=0;oR[i]=0;continue;}
-      if(this.tape===1){this.tT++;const f=this.tT/this.tLen;if(f>=1){this.rate=0;this.tape=2;}else this.rate=this.r0*(1-f);}
-      else if(this.tape===3){this.tT++;const f=this.tT/this.tLen;if(f>=1){this.rate=1;this.tape=0;}else this.rate=this.r0+(1-this.r0)*f;}
+      if(this.tape===1){this.tT+=this.tempo;const f=this.tT/this.tLen;if(f>=1){this.rate=0;this.tape=2;}else this.rate=this.r0*(1-f);}
+      else if(this.tape===3){this.tT+=this.tempo;const f=this.tT/this.tLen;if(f>=1){this.rate=1;this.tape=0;}else this.rate=this.r0+(1-this.r0)*f;}
       // tape warble: wobble the read position (wow + flutter)
       this.wCur+=((this.wOn?this.wAmt:0)-this.wCur)*this.kW;
       let wo=0;
@@ -670,8 +682,11 @@ class Remixer extends AudioWorkletProcessor{
       }
       const s=this.st;
       if(s)this.spC+=(this.sp-this.spC)*this.kSp;
-      this.pos+=this.rate*this.dir*(s?this.spC*s.d:1)*(this.psMode!=='k'?this.psR:1);
-      this.ghost+=(this.tape===4?this.rate*this.dir:1);if(this.pos<0)this.pos=0;
+      this.tempo+=(this.tmT-this.tempo)*.0005; // glide, no clicks
+      const ps=this.psMode!=='k'?this.psR:1;
+      this.pos+=this.rate*this.dir*(s?this.spC*s.d:1)*ps*this.tempo;
+      // the beat timeline moves with the song's speed (tempo control and Pitch speed mode), so every beat-locked effect stays in time
+      this.ghost+=(this.tape===4?this.rate*this.dir:1)*ps*this.tempo;if(this.pos<0)this.pos=0;
       if(this.tape===4&&this.ghost<this.ra){this.ghost=this.ra;this.pos=this.ra;}
       if(this.psSync&&Math.abs(this.psR-1)<1e-3&&(this.psMode==='k'||!this.psOn)){
         this.psSync=false;
@@ -719,7 +734,7 @@ $$('.latch[data-fx]').forEach(b=>b.innerHTML=LOCK);
 let vid=null,vidB=null,posQ=0,rateR=1,vidLevel=0;
 const dn={on:{},held:[],brk:null,chop:0,chop0:0,chopBase:0,chopPend:undefined,rollShift:0,brk0:null,ready:false,buf:{},next:null,rollNext:{},free:null,rz:null,oh:null,ducked:false,flash:null,led:-2,shown:-1},aq={},ac={},sy={},an={voices:[],parts:[]};let ctx=null,node=null,hp=null,hs=null,comp=null,audioErr=null,fxHP,fxLP,stHP,stLP,echoSend,echoDelay,echoFb,revSend,conv,revPre,revLP,revHP,mPan=null,mVol=null,recDest=null,analyser=null,scopeBuf=null;
 let sr=48000,lenS=0,peaks=null;
-let bpm=120,offSec=0,detected={bpm:120,off:0};
+let bpm=120,offSec=0,detected={bpm:120,off:0},speed=1,ghostR=1; // speed: song playback speed (1 = original); ghostR: how fast the beat timeline is moving right now
 let playing=false,posS=0,posAt=0,wakeLock=null;
 
 const fx={
@@ -828,7 +843,7 @@ async function ensureAudio(){
   applyAll();
   node.port.onmessage=e=>{
     const m=e.data;
-    if(m.t==='pos'){posS=m.p;posAt=performance.now();if(m.q!=null){posQ=m.q;rateR=m.r;posCt=m.ct;}}
+    if(m.t==='pos'){posS=m.p;posAt=performance.now();if(m.gr!=null)ghostR=m.gr;if(m.q!=null){posQ=m.q;rateR=m.r;posCt=m.ct;}}
     else if(m.t==='ended'){playing=false;posS=Math.round(effA()*lenS);posAt=performance.now();setPlayIcon();releaseWake();resetMomentary();}
   };
 }
@@ -871,7 +886,7 @@ async function loadFile(file){
   await new Promise(r=>setTimeout(r,30));
   peaks=computePeaks(buf,Math.max(1600,Math.min(200000,Math.floor(buf.length/48))));vS=0;vE=1;
   const t=detectTempo(buf);
-  detected=t;bpm=t.bpm;offSec=t.off;songKey=analyzeSong(buf);
+  detected=t;bpm=t.bpm;offSec=t.off;speed=1;songKey=analyzeSong(buf);
   lenS=buf.length;
   const L=new Float32Array(buf.getChannelData(0));
   const R=buf.numberOfChannels>1?new Float32Array(buf.getChannelData(1)):null;
@@ -959,20 +974,27 @@ $('#play').onclick=togglePlay;
 async function grabWake(){try{if('wakeLock' in navigator)wakeLock=await navigator.wakeLock.request('screen');}catch(e){}}
 function releaseWake(){try{if(wakeLock){wakeLock.release();wakeLock=null;}}catch(e){}}
 
-function estPos(){return playing?posS+(performance.now()-posAt)/1000*sr:posS;}
+function estPos(){return playing?posS+(performance.now()-posAt)/1000*sr*ghostR:posS;}
 function heardPos(){
   const lat=ctx?((ctx.outputLatency||0)+(ctx.baseLatency||0)):0;
-  return Math.max(0,estPos()-(playing?lat*sr:0));
+  return Math.max(0,estPos()-(playing?lat*sr*ghostR:0));
 }
 const fmt=sec=>{sec=Math.max(0,sec|0);return Math.floor(sec/60)+':'+String(sec%60).padStart(2,'0');};
 
 /* ---------- tempo ---------- */
-function sendGrid(){send({t:'grid',spb:60/bpm*sr,off:offSec*sr});updateEcho();const ab=document.getElementById('bpmAuto');if(ab)ab.classList.toggle('same',Math.abs(bpm-detected.bpm)<.01&&Math.abs(offSec-detected.off)<.001);}
+const autoSame=()=>Math.abs(bpm-detected.bpm)<.01&&Math.abs(offSec-detected.off)<.001&&Math.abs(speed-1)<1e-4;
+function sendGrid(){send({t:'grid',spb:60/bpm*sr,off:offSec*sr});send({t:'speed',v:speed});updateEcho();const ab=document.getElementById('bpmAuto');if(ab)ab.classList.toggle('same',autoSame());}
 function updateBpm(){
-  const ab=$('#bpmAuto');if(ab)ab.classList.toggle('same',Math.abs(bpm-detected.bpm)<.01&&Math.abs(offSec-detected.off)<.001);
-  $('#bpmVal').innerHTML=(lenS?bpm.toFixed(1):'---')+'<small>BPM</small>';
+  const ab=$('#bpmAuto');if(ab)ab.classList.toggle('same',autoSame());
+  const pb=bpm*speed,pc=(speed-1)*100,pt=Math.abs(pc)>=.05?(pc>0?'+':'')+pc.toFixed(1)+'%':'BPM';
+  $('#bpmVal').innerHTML=(lenS?pb.toFixed(1):'---')+'<small>'+pt+'</small>'; // the tempo you hear
   $('#sheetBpm').textContent=bpm.toFixed(1);
+  $('#sheetSpd').textContent=pb.toFixed(1)+' BPM · '+(speed*100).toFixed(1)+'%';
+  const sl=$('#spdSl');if(sl&&document.activeElement!==sl)sl.value=pc.toFixed(1);
+  $$('#sheet .tm').forEach(b=>b.classList.toggle('on',b.dataset.a==='tap'+tapMode));
 }
+var tapMode=(()=>{try{return JSON.parse(localStorage.getItem('remixer.tapMode'))||'speed';}catch(e){return 'speed';}})(); // what TAP changes: the song's speed, or the beat grid
+function setSpeed(v){speed=Math.min(2,Math.max(.5,Math.round(v*10000)/10000));send({t:'speed',v:speed});updateEcho();updateBpm();}
 function setBpm(v){bpm=Math.min(250,Math.max(40,Math.round(v*100)/100));sendGrid();updateBpm();}
 let taps=[];
 $('#tap').addEventListener('pointerdown',e=>{
@@ -984,7 +1006,11 @@ $('#tap').addEventListener('pointerdown',e=>{
   if(taps.length>9)taps.shift();
   if(taps.length>=3){
     let sum=0;for(let i=1;i<taps.length;i++)sum+=taps[i].t-taps[i-1].t;
-    const nb=60000/(sum/(taps.length-1));
+    let nb=60000/(sum/(taps.length-1));
+    if(tapMode==='speed'){ // tap the tempo you want: the song speeds up or slows down to it (halves/doubles folded to the nearest)
+      while(nb>bpm*1.414)nb/=2;while(nb<bpm*.707)nb*=2;
+      setSpeed(nb/bpm);return;
+    }
     bpm=Math.round(nb*10)/10;
     if(playing&&lenS){
       const spbS=60/bpm*sr;let cx=0,cy=0;
@@ -995,7 +1021,8 @@ $('#tap').addEventListener('pointerdown',e=>{
     sendGrid();updateBpm();
   }
 });
-$('#tempo').onclick=()=>{if(lenS)$('#sheet').classList.add('open');};
+$('#tempo').onclick=()=>{if(lenS){updateBpm();$('#sheet').classList.add('open');}};
+$('#spdSl').addEventListener('input',e=>setSpeed(1+(+e.target.value)/100));
 $('#sheet').addEventListener('click',e=>{
   if(e.target.id==='sheet'){$('#sheet').classList.remove('open');return;}
   const a=e.target.dataset&&e.target.dataset.a;if(!a)return;
@@ -1009,12 +1036,16 @@ $('#sheet').addEventListener('click',e=>{
     case 'beat-':offSec=((offSec-spb)%(spb*4)+spb*4)%(spb*4);sendGrid();break;
     case 'beat+':offSec=(offSec+spb)%(spb*4);sendGrid();break;
     case 'redetect':bpm=detected.bpm;offSec=detected.off;sendGrid();updateBpm();break;
+    case 's-1':setSpeed((bpm*speed-1)/bpm);break;case 's+1':setSpeed((bpm*speed+1)/bpm);break;
+    case 's-0.1':setSpeed((bpm*speed-.1)/bpm);break;case 's+0.1':setSpeed((bpm*speed+.1)/bpm);break;
+    case 's1':setSpeed(1);break;
+    case 'tapspeed':case 'tapgrid':tapMode=a.slice(3);store.set('remixer.tapMode',tapMode);taps=[];updateBpm();break;
     case 'close':$('#sheet').classList.remove('open');break;
   }
 });
 
 /* ---------- waveform ---------- */
-const BUILD='2026-11-26 10:00 UTC'; // bumped on every save, so a phone can prove which copy it is running
+const BUILD='2026-11-26 10:30 UTC'; // bumped on every save, so a phone can prove which copy it is running
 {
   const dlg=$('#about');
   $('#buildStamp').textContent='build '+BUILD;
@@ -1359,6 +1390,7 @@ const FXSPEC={
     {k:'aqBubS',l:'Bubble sounds',min:0,max:100,v:40,f:pct},
     {k:'aqVoice',l:'Bubble voice',chips:[['Bubble','bub'],['Glass','glass'],['Marimba','mar'],['Kalimba','kal'],['Pluck','pluck'],['Soft pad','pad']],v:'bub'},
     {k:'aqNotes',l:'Bubble notes',chips:[['Chords','c'],['Melody','m'],['Harmony','h']],v:'h'},
+    {k:'aqTap',l:'Sound on touch',toggle:1,v:false},
     {sub:'Look'},
     {k:'aqCaus',l:'Caustics',min:0,max:100,v:80,f:pct},
     {k:'aqBubV',l:'Bubbles',min:0,max:100,v:50,f:pct},
@@ -1518,7 +1550,7 @@ function applyTempoStyle(){
 }
 function updateEcho(){
   if(!ctx)return;const t=ctx.currentTime;
-  echoDelay.delayTime.setTargetAtTime(Math.min(3.9,getV('fx','eTime')*60/bpm),t,.02);
+  echoDelay.delayTime.setTargetAtTime(Math.min(3.9,getV('fx','eTime')*60/(bpm*speed)),t,.02);
   echoFb.gain.setTargetAtTime(getV('fx','eFb')/100,t,.02);
 }
 function makeIR(sec,pw,width){
@@ -1914,7 +1946,7 @@ function bubbleTick(){
   if(!ctx||!aq.bub)return;
   const a=eff.aqua,amt=getV('fx','aqBubS')/100,now=ctx.currentTime;
   if(!(a>0&&amt>0&&playing&&lenS&&rateR>.05)){bubNext=null;return;}
-  aq.bubDel.delayTime.setTargetAtTime(Math.min(1.9,60/bpm*.75),now,.05); // dotted-8th echo
+  aq.bubDel.delayTime.setTargetAtTime(Math.min(1.9,60/(bpm*speed)*.75),now,.05); // dotted-8th echo
   const ec=getV('fx','aqEcho')/100;aq.bubFb.gain.setTargetAtTime(ec*.6,now,.05);aq.bubWet.gain.setTargetAtTime(Math.min(1,ec*1.4),now,.05);
   const [pos,t0]=schedBase(),stepS=60/bpm*sr*.25,rel=pos-offSec*sr,b=rel/stepS;
   if(bubNext===null||bubNext<=Math.floor(b)-1||bubNext>Math.floor(b)+6)bubNext=Math.floor(b)+1;
@@ -2750,7 +2782,7 @@ const DNB_PAT={
 };
 function dnbMult(){ // how fast the drums run against the song's tempo
   const r=getV('dnb','rate');if(r==='h')return .5;if(r==='x1')return 1;if(r==='x2')return 2;
-  let best=1;for(const m of [.5,1,2])if(Math.abs(bpm*m-172)<Math.abs(bpm*best-172))best=m;return best; // auto: whichever lands nearest 172 BPM
+  const b0=bpm*speed;let best=1;for(const m of [.5,1,2])if(Math.abs(b0*m-172)<Math.abs(b0*best-172))best=m;return best; // auto: whichever lands nearest 172 BPM
 }
 const dnbRoot=()=>{const m=28+((songKey-4)%12+12)%12;return 440*Math.pow(2,(m-69)/12);}; // the song's key, E1..D#2
 function dnbInit(){
@@ -2795,21 +2827,22 @@ function dnbBase(){
   if(playing&&lenS){dn.free=null;return posCt!=null?[posS,posCt]:[posS+(performance.now()-posAt)/1000*sr,now];}
   if(!dn.free)dn.free=[posS,now];return dn.free;
 }
+const dnbR=()=>playing&&lenS?Math.max(.05,ghostR):speed; // how fast the song timeline runs
 const dnbBusy=()=>!!(dn.brk||dn.on.sr||dn.on.hr);
 function dnbSched(){
   if(!ctx)return;
   if(!dnbBusy()){dn.next=null;dn.rollNext={};return;}
   if(!dnbInit())return;
-  const now=ctx.currentTime,[p0,t0]=dnbBase(),beat=60/(bpm*dnbMult())*sr,stepS=beat/4,rel=p0-offSec*sr,look=.07;
-  const tAt=s=>t0+(s-rel)/sr, // audio time of a grid position (in samples from the first beat)
-    relNow=rel+(now-t0)*sr;   // where the timeline is right now (the base can be stamped earlier)
+  const now=ctx.currentTime,[p0,t0]=dnbBase(),R=dnbR(),beat=60/(bpm*dnbMult())*sr,stepS=beat/4,rel=p0-offSec*sr,look=.07;
+  const tAt=s=>t0+(s-rel)/(sr*R), // audio time of a grid position (in song samples from the first beat)
+    relNow=rel+(now-t0)*sr*R;   // where the timeline is right now (the base can be stamped earlier)
   if(dn.brk){
     const b=Math.floor(relNow/stepS),sw=getV('dnb','swing')/100;
     if(dn.next===null||dn.next<b-1||dn.next>b+8)dn.next=b+1;
     if(dn.brk0==null)dn.brk0=dn.next;
     for(let g=0;g<16;g++){
-      const T=tAt(dn.next*stepS)+((dn.next%2+2)%2?sw*.5*stepS/sr:0);if(T-now>look)break;
-      if(T>=now-.005)dnbStep(dn.next,Math.max(now,T),stepS/sr);
+      const T=tAt(dn.next*stepS)+((dn.next%2+2)%2?sw*.5*stepS/(sr*R):0);if(T-now>look)break;
+      if(T>=now-.005)dnbStep(dn.next,Math.max(now,T),stepS/(sr*R));
       dn.next++;
     }
   }else dn.next=null;
@@ -2821,7 +2854,7 @@ function dnbSched(){
     if(nx==null||nx<b-1||nx>b+16)nx=b+1;
     for(let g=0;g<32;g++){
       const T=tAt(nx*rl);if(T-now>look)break;
-      if(T>=now-.005){const up=Math.min(1,Math.max(0,(T-H.t0)/(beat*8/sr))); // builds louder and higher over two bars
+      if(T>=now-.005){const up=Math.min(1,Math.max(0,(T-H.t0)/(beat*8/(sr*R)))); // builds louder and higher over two bars
         if(id==='sr')dnbHit('snare',Math.max(now,T),.3+.6*up,1+.35*up);else{dnbChoke(T);dnbHit('hat',Math.max(now,T),.22+.3*up,1+.2*up);}}
       nx++;
     }
@@ -2872,7 +2905,7 @@ function dnbReese(on){
   const now=ctx.currentTime,f=dnbRoot(),o1=ctx.createOscillator(),o2=ctx.createOscillator(),sub=ctx.createOscillator(),lfo=ctx.createOscillator();
   o1.type=o2.type='sawtooth';o1.frequency.value=o2.frequency.value=sub.frequency.value=f;o1.detune.value=-14;o2.detune.value=14;
   const lp=ctx.createBiquadFilter();lp.type='lowpass';lp.Q.value=4;lp.frequency.value=330;
-  const lg=ctx.createGain();lfo.frequency.value=bpm*dnbMult()/60/2;lg.gain.value=250;lfo.connect(lg).connect(lp.frequency); // the filter breathes every two beats
+  const lg=ctx.createGain();lfo.frequency.value=bpm*speed*dnbMult()/60/2;lg.gain.value=250;lfo.connect(lg).connect(lp.frequency); // the filter breathes every two beats
   const sh=ctx.createWaveShaper(),c=new Float32Array(1024);for(let i=0;i<1024;i++){const x=i/1023*2-1;c[i]=Math.tanh(2.5*x);}sh.curve=c;
   const sg=ctx.createGain();sg.gain.value=.5;const v=ctx.createGain();v.gain.value=0;v.gain.setTargetAtTime(.42,now,.01);
   o1.connect(lp);o2.connect(lp);lp.connect(sh).connect(v);sub.connect(sg).connect(v);v.connect(dn.lvl); // bass skips the room reverb
@@ -2880,8 +2913,8 @@ function dnbReese(on){
 }
 function dnbSub(){ // 808-style drop on the next 16th: an octave above the key, sliding down
   if(!dnbInit())return;
-  const now=ctx.currentTime,[p0,t0]=dnbBase(),beat=60/(bpm*dnbMult()),stepS=beat/4*sr,rel=p0-offSec*sr;
-  const T=Math.max(now+.005,t0+((Math.floor((rel+(now-t0)*sr)/stepS)+1)*stepS-rel)/sr),f=dnbRoot(),o=ctx.createOscillator(),g=ctx.createGain();
+  const now=ctx.currentTime,[p0,t0]=dnbBase(),R=dnbR(),stepS=60/(bpm*dnbMult())/4*sr,beat=stepS*4/(sr*R),rel=p0-offSec*sr;
+  const T=Math.max(now+.005,t0+((Math.floor((rel+(now-t0)*sr*R)/stepS)+1)*stepS-rel)/(sr*R)),f=dnbRoot(),o=ctx.createOscillator(),g=ctx.createGain();
   o.frequency.setValueAtTime(f*2,T);o.frequency.exponentialRampToValueAtTime(f,T+beat*.75);
   g.gain.setValueAtTime(0,T);g.gain.linearRampToValueAtTime(.5,T+.005);g.gain.setTargetAtTime(0,T+beat*1.2,beat*.5);
   o.connect(g).connect(dn.lvl);o.start(T);o.stop(T+beat*4);dnbHit('kick',T,.6);
@@ -2918,9 +2951,9 @@ function dnbPaint(){
 }
 function dnbTick(){ // step lights + the drums' tempo readout, from the animation loop
   if(!UI.dnbLeds)return;let i=-1;
-  if(ctx&&dn.ready&&dnbBusy()){const [p0,t0]=dnbBase(),st=60/(bpm*dnbMult())*sr/4,lat=(ctx.outputLatency||0)+(ctx.baseLatency||0),rel=p0+(ctx.currentTime-lat-t0)*sr-offSec*sr;i=((Math.floor(rel/st)%16)+16)%16;}
+  if(ctx&&dn.ready&&dnbBusy()){const [p0,t0]=dnbBase(),st=60/(bpm*dnbMult())*sr/4,lat=(ctx.outputLatency||0)+(ctx.baseLatency||0),rel=p0+(ctx.currentTime-lat-t0)*sr*dnbR()-offSec*sr;i=((Math.floor(rel/st)%16)+16)%16;}
   if(i!==dn.led){dn.led=i;UI.dnbLeds.forEach((b,j)=>b.classList.toggle('now',j===i));}
-  const t=Math.round(bpm*dnbMult());if(t!==dn.shown){dn.shown=t;UI.dnbBpm.textContent=t+' BPM';}
+  const t=Math.round(bpm*speed*dnbMult());if(t!==dn.shown){dn.shown=t;UI.dnbBpm.textContent=t+' BPM';}
 }
 setInterval(dnbSched,25);
 
@@ -3072,9 +3105,9 @@ function bindVisBtn(mb){ // VISUAL ONLY toggle inside a module screen
 function aquaBurst(x,y){
   const S=scn.aquaM||(scn.aquaM={bub:[],tb:[],pops:[],at:performance.now()});
   for(let k=0;k<6;k++)S.bub.push({x:x+(Math.random()-.5)*.04,y:y+Math.random()*.03,r:.008+Math.random()*.02,v:.18+Math.random()*.3,ph:Math.random()*6});
-  if(!ctx||!aq.bub||ctx.state!=='running'||getV('fx','aqVis'))return; // visuals only: silent bubbles
+  if(!ctx||!aq.bub||ctx.state!=='running'||getV('fx','aqVis')||!getV('fx','aqTap'))return; // touches make bubbles you see; sound only if 'Sound on touch' is on
   const notes=bubbleNotes(lenS?heardPos()/sr:0);if(!notes.length)return;
-  const i0=Math.round(x*(notes.length-1)),st=bpm?60/bpm/8:.06,n=3+Math.floor((1-y)*3),a=.6+.4*(1-y);
+  const i0=Math.round(x*(notes.length-1)),st=bpm?60/(bpm*speed)/8:.06,n=3+Math.floor((1-y)*3),a=.6+.4*(1-y);
   for(let k=0;k<n;k++)bubble(a*(1-k*.1),notes[Math.min(notes.length-1,i0+k)],ctx.currentTime+.01+k*st);
 }
 function drawAquaMod(){
@@ -4351,7 +4384,7 @@ $('#recDiscard').onclick=()=>{recBlob=null;vidBlob=null;pcmL=[];pcmR=[];$('#recA
   ab.addEventListener('pointerdown',e=>e.stopPropagation());
   ab.addEventListener('click',e=>{
     e.stopPropagation();if(!lenS)return;
-    bpm=detected.bpm;offSec=detected.off;taps=[];sendGrid();updateBpm();
+    bpm=detected.bpm;offSec=detected.off;speed=1;taps=[];sendGrid();updateBpm();
     ab.classList.add('hit');setTimeout(()=>ab.classList.remove('hit'),150);
   });
 }
