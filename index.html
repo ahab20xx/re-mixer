@@ -996,7 +996,7 @@ $('#sheet').addEventListener('click',e=>{
 });
 
 /* ---------- waveform ---------- */
-const BUILD='2026-11-26 05:52 UTC'; // bumped on every save, so a phone can prove which copy it is running
+const BUILD='2026-11-26 06:02 UTC'; // bumped on every save, so a phone can prove which copy it is running
 {
   const dlg=$('#about');
   $('#buildStamp').textContent='build '+BUILD;
@@ -2305,8 +2305,6 @@ function drawFish(c,cx,cy,f,t,bones,glow){
     const q=Math.min(1,glow),hAt=i=>{const u=(Math.max(0,Math.min(L-1,i))/(L-1))*2-1;
       return Math.max(1,Math.round(Hh*Math.sqrt(Math.max(0,1-u*u*.85))));};
     const X=i=>Math.round(cx+((i/(L-1))*2-1)*L/2*dir);
-    for(let i=-4;i<L+4;i++){const h=hAt(i)+4;                                   // dark rim: acid water is green too, so the fish needs an edge
-      c.fillStyle=`rgba(0,26,6,${(.55+.35*q).toFixed(2)})`;c.fillRect(X(i),Math.round(cy-h),1,h*2+1);}
     for(let i=-3;i<L+3;i++){const h=hAt(i)+3;                                   // wide outer haze, past nose and tail
       c.fillStyle=`rgba(90,230,20,${(.3+.4*q).toFixed(2)})`;c.fillRect(X(i),Math.round(cy-h),1,h*2+1);}
     for(let i=-1;i<L+1;i++){const h=hAt(i)+2;                                   // the body burning green
