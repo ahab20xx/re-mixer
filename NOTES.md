@@ -70,6 +70,7 @@ canvas each frame: `drawVideoFx` (warble, aqua sway, etc.) → `drawScene`
 | `acidM` | ACID 303 |
 | `angelM` | ANGEL VOICES |
 | `gate` | GATER |
+| `dnb` | PS DRUM & BASS |
 
 **Settings** come from three tables: `SPEC` (per module), `FXSPEC` (per
 effect) and `screenRows()` (per screen). `panelRows(id)` assembles them. Rows
@@ -79,7 +80,9 @@ marked `adv:1` hide behind a "More settings" fold.
 `localStorage['remixer.cfg']`. The full set of keys the app writes:
 `remixer.cfg`, `remixer.layout3`, `remixer.layout2` (legacy, migrated),
 `remixer.v`, `remixer.font`, `remixer.viewer`, `remixer.mix`, `remixer.vlock`,
-`remixer.vpan`, `remixer.recfmt`, `remixer.chLive`, `remixer.more.*`.
+`remixer.vpan`, `remixer.recfmt`, `remixer.chLive`, `remixer.more.*`,
+`remixer.dnbAdded` (one-time flag: puts the drum & bass module on an old
+saved layout once; removing the module afterwards keeps it removed).
 
 **Chaos toys** (`chaosDrive`) spin a 3D object to scramble a module's
 settings. The tape one is different: it shuttles the transport instead.
@@ -182,6 +185,16 @@ Read the diffs, not the subject lines.
 
 Newest first. All of this is in `main`.
 
+- PS DRUM & BASS module (`dnb`). Four two-bar breaks
+  (`DNB_PAT`), snare and hat rolls, a Reese bass and a sub drop, all
+  synthesized in the file, rendered at 22 kHz / 10-bit for the PS1 feel.
+  Scheduled from `dnbSched` (25 ms timer) on the song's *ghost* timeline, so
+  stutter and reverse don't drag the drums; with the song paused it free-runs
+  at the song's tempo. Beat rate Auto picks ½×/1×/2× nearest 172 BPM. Setting
+  values are text (`x2`, `r16`) on purpose: the chip handler turns
+  number-looking strings into numbers. Timing checked by rendering through an
+  OfflineAudioContext with a proxied clock: hits within 0.0006 of a 16th.
+  Not heard on a real device yet.
 - Reverse and Tape Stop merged into one `rt` module; old layouts migrate
   automatically and the separate modules are retired.
 - Module menu bars and the chaos readout locked to one line; overflow scrolls
