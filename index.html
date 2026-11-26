@@ -717,7 +717,7 @@ const LOCK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-wi
 $$('.latch[data-fx]').forEach(b=>b.innerHTML=LOCK);
 
 let vid=null,vidB=null,posQ=0,rateR=1,vidLevel=0;
-const dn={on:{},held:[],brk:null,brk0:null,ready:false,buf:{},next:null,rollNext:{},free:null,rz:null,oh:null,ducked:false,flash:null,led:-2,shown:-1},aq={},ac={},sy={},an={voices:[],parts:[]};let ctx=null,node=null,hp=null,hs=null,comp=null,audioErr=null,fxHP,fxLP,stHP,stLP,echoSend,echoDelay,echoFb,revSend,conv,revPre,revLP,revHP,mPan=null,mVol=null,recDest=null,analyser=null,scopeBuf=null;
+const dn={on:{},held:[],brk:null,chop:0,chop0:0,chopBase:0,chopPend:undefined,rollShift:0,brk0:null,ready:false,buf:{},next:null,rollNext:{},free:null,rz:null,oh:null,ducked:false,flash:null,led:-2,shown:-1},aq={},ac={},sy={},an={voices:[],parts:[]};let ctx=null,node=null,hp=null,hs=null,comp=null,audioErr=null,fxHP,fxLP,stHP,stLP,echoSend,echoDelay,echoFb,revSend,conv,revPre,revLP,revHP,mPan=null,mVol=null,recDest=null,analyser=null,scopeBuf=null;
 let sr=48000,lenS=0,peaks=null;
 let bpm=120,offSec=0,detected={bpm:120,off:0};
 let playing=false,posS=0,posAt=0,wakeLock=null;
@@ -1014,7 +1014,7 @@ $('#sheet').addEventListener('click',e=>{
 });
 
 /* ---------- waveform ---------- */
-const BUILD='2026-11-26 09:45 UTC'; // bumped on every save, so a phone can prove which copy it is running
+const BUILD='2026-11-26 10:00 UTC'; // bumped on every save, so a phone can prove which copy it is running
 {
   const dlg=$('#about');
   $('#buildStamp').textContent='build '+BUILD;
@@ -1438,6 +1438,7 @@ SPEC.dnb=[
   {k:'swing',l:'Swing',min:0,max:60,v:0,f:pct},
   {k:'snd',l:'Sound',chips:[['Clean','clean'],['PS1','ps'],['Crunchy','crunch']],v:'ps'},
   {k:'room',l:'PS room reverb',min:0,max:100,v:30,f:pct},
+  {k:'cdist',l:'Slide per chop',min:15,max:120,v:35,f:v=>v+'px'},
   {k:'start',l:'Breaks start',chips:[['On the bar','bar'],['From the top','tap']],v:'bar',adv:1},
   {k:'duck',l:'Duck song drums',toggle:1,v:false,adv:1}
 ];
@@ -2754,7 +2755,7 @@ function dnbMult(){ // how fast the drums run against the song's tempo
 const dnbRoot=()=>{const m=28+((songKey-4)%12+12)%12;return 440*Math.pow(2,(m-69)/12);}; // the song's key, E1..D#2
 function dnbInit(){
   if(dn.ready)return true;if(!ctx||!dn.bus)return false;
-  dn.out=ctx.createGain();dn.out.gain.value=.55;dn.lvl=ctx.createGain();dn.out.connect(dn.lvl).connect(dn.bus);
+  dn.out=ctx.createGain();dn.out.gain.value=.45;dn.lvl=ctx.createGain();dn.out.connect(dn.lvl).connect(dn.bus);
   dn.verb=ctx.createConvolver();dn.vg=ctx.createGain();dn.out.connect(dn.verb).connect(dn.vg).connect(dn.lvl);
   // a PS1-style room: short bright tail with a few early echoes
   const R=ctx.sampleRate,L=Math.floor(R*1.4),ir=ctx.createBuffer(2,L,R);
@@ -2784,7 +2785,7 @@ function dnbRender(){
 function dnbLevels(){if(!dn.ready)return;const t=ctx.currentTime;dn.lvl.gain.setTargetAtTime(getV('dnb','lvl')/100,t,.02);dn.vg.gain.setTargetAtTime(getV('dnb','room')/100*.6,t,.02);}
 function dnbHit(name,T,vel,rate){
   const b=dn.buf[name];if(!b)return null;const s=ctx.createBufferSource(),g=ctx.createGain();s.buffer=b;if(rate)s.playbackRate.value=rate;
-  g.gain.value=vel;s.connect(g).connect(dn.out);s.start(T);s.onended=()=>{try{g.disconnect();}catch(e){}};return g;
+  g.gain.value=vel*(dn.vs||1);s.connect(g).connect(dn.out);s.start(T);s.onended=()=>{try{g.disconnect();}catch(e){}};return g;
 }
 function dnbChoke(T){if(dn.oh){dn.oh.gain.setTargetAtTime(0,T,.008);dn.oh=null;}} // a closed hat cuts off an open one
 // [song timeline position in samples, the audio-clock time it is heard]. Uses the true timeline, so
@@ -2799,7 +2800,7 @@ function dnbSched(){
   if(!ctx)return;
   if(!dnbBusy()){dn.next=null;dn.rollNext={};return;}
   if(!dnbInit())return;
-  const now=ctx.currentTime,[p0,t0]=dnbBase(),beat=60/(bpm*dnbMult())*sr,stepS=beat/4,rel=p0-offSec*sr,look=.12;
+  const now=ctx.currentTime,[p0,t0]=dnbBase(),beat=60/(bpm*dnbMult())*sr,stepS=beat/4,rel=p0-offSec*sr,look=.07;
   const tAt=s=>t0+(s-rel)/sr, // audio time of a grid position (in samples from the first beat)
     relNow=rel+(now-t0)*sr;   // where the timeline is right now (the base can be stamped earlier)
   if(dn.brk){
@@ -2808,11 +2809,11 @@ function dnbSched(){
     if(dn.brk0==null)dn.brk0=dn.next;
     for(let g=0;g<16;g++){
       const T=tAt(dn.next*stepS)+((dn.next%2+2)%2?sw*.5*stepS/sr:0);if(T-now>look)break;
-      if(T>=now-.005)dnbStep(dn.next,Math.max(now,T));
+      if(T>=now-.005)dnbStep(dn.next,Math.max(now,T),stepS/sr);
       dn.next++;
     }
   }else dn.next=null;
-  const div=parseInt(String(getV('dnb','roll')).slice(1))||16,rl=beat*4/div; // roll note length: div notes per bar
+  const RD=[4,8,12,16,24,32,48,64],d0=parseInt(String(getV('dnb','roll')).slice(1))||16,div=RD[Math.max(0,Math.min(RD.length-1,RD.indexOf(d0)+(dn.rollShift||0)))],rl=beat*4/div; // roll note length: div notes per bar
   if(dn.rollDiv!==div){dn.rollDiv=div;dn.rollNext={};}
   for(const id of ['sr','hr']){
     const H=dn.on[id];if(!H){delete dn.rollNext[id];continue;}
@@ -2827,15 +2828,43 @@ function dnbSched(){
     dn.rollNext[id]=nx;
   }
 }
-function dnbStep(n,T){
+// slide a finger up/down on a held break to chop it. up: edit, 1/8 repeat, 1/16 stutter, 1/32 stutter. down: half-time, reverse, 3-step loop
+const DNB_CHOP={'4':'1/32 STUTTER','3':'1/16 STUTTER','2':'1/8 REPEAT','1':'CHOP','-1':'HALF-TIME','-2':'REVERSE','-3':'TRIPLET'};
+const DNB_EDIT=[0,1,0,3,6,5,2,7]; // jungle edit: which 2-step slice plays in each slot of a half-bar
+const dnbW=x=>((x%32)+32)%32;
+function dnbIdx(n){
+  const raw=dnbW(n-(getV('dnb','start')==='tap'?dn.brk0:0)),c=dn.chop;
+  if(!c)return raw;
+  const k=n-dn.chop0,b=dn.chopBase;
+  if(c===1){const s=Math.floor(raw/2);return (Math.floor(s/8)*8+DNB_EDIT[s%8])*2+raw%2;}
+  if(c===2)return dnbW(b+k%2);
+  if(c>=3)return b;
+  if(c===-1)return dnbW(b+Math.floor(k/2));
+  if(c===-2)return dnbW(b-k);
+  return dnbW(b+k%3);
+}
+function dnbStep(n,T,stepSec){
   const P=DNB_PAT[dn.brk];if(!P)return;
-  const i=(((n-(getV('dnb','start')==='tap'?dn.brk0:0))%32)+32)%32,at=s=>(s&&s[i])||'.';
+  if(dn.chopPend!==undefined){ // a new chop level starts exactly on this step, carrying on from what was playing
+    let b=dnbIdx(n);const c=dn.chopPend;dn.chopPend=undefined;
+    if(c>=2||c===-3)for(let j=0;j<4;j++){const q=dnbW(b-j);if(P.k[q]!=='.'||P.s[q]!=='.'){b=q;break;}} // repeat a hit, not a gap
+    dn.chop=c;dn.chop0=n;dn.chopBase=b;
+  }
+  const c=dn.chop,k=n-dn.chop0;
+  if(c===-1&&k%2)return; // half-time: every step lasts two
+  const i=dnbIdx(n),at=s=>(s&&s[i])||'.',up=c>=3?Math.min(1.6,1+.035*k):1; // stutters climb in pitch
+  dn.vs=c>=3?.42:1; // stutters repeat fast, so each hit is quieter
+  dnbHits(P,i,at,T,up);
+  if(c===4&&stepSec)dnbHits(P,i,at,T+stepSec/2,Math.min(1.6,up+.017));
+  dn.vs=1;
+}
+function dnbHits(P,i,at,T,up){
   const k=at(P.k),s=at(P.s),h=at(P.h),o=at(P.o),r=at(P.r);
-  if(k!=='.')dnbHit('kick',T,k==='g'?.5:1);
-  if(s!=='.')dnbHit('snare',T,s==='g'?.28:.9,s==='g'?1.12:1);
-  if(h!=='.'){dnbChoke(T);dnbHit('hat',T,h==='g'?(i%2?.16:.28):(i%4===0?.45:.32));}
-  if(o!=='.'){dnbChoke(T);dn.oh=dnbHit('ohat',T,.35);}
-  if(r!=='.')dnbHit('ride',T,i%4===0?.4:.28);
+  if(k!=='.')dnbHit('kick',T,k==='g'?.5:1,up);
+  if(s!=='.')dnbHit('snare',T,s==='g'?.28:.9,(s==='g'?1.12:1)*up);
+  if(h!=='.'){dnbChoke(T);dnbHit('hat',T,h==='g'?(i%2?.16:.28):(i%4===0?.45:.32),up);}
+  if(o!=='.'){dnbChoke(T);dn.oh=dnbHit('ohat',T,.35,up);}
+  if(r!=='.')dnbHit('ride',T,i%4===0?.4:.28,up);
 }
 function dnbReese(on){
   if(!on){if(!dn.rz||!ctx)return;const z=dn.rz,t=ctx.currentTime;dn.rz=null;z.v.gain.cancelScheduledValues(t);z.v.gain.setTargetAtTime(0,t,.05);z.o.forEach(o=>o.stop(t+.4));return;}
@@ -2870,7 +2899,7 @@ function dnbPress(id,down){
     if(L)dn.held=dn.brk===id?[]:[id];
     else{dn.held=dn.held.filter(x=>x!==id);if(down)dn.held.push(id);}
     const nb=dn.held.length?dn.held[dn.held.length-1]:null;
-    if(nb!==dn.brk){dn.brk=nb;dn.next=null;dn.brk0=null;}
+    if(nb!==dn.brk){const was=dn.brk;dn.brk=nb;if(!was||!nb){dn.next=null;dn.brk0=null;dn.chop=0;dn.chopPend=undefined;}else if(dn.chop)dn.chopPend=dn.chop;} // swapping mid-chop keeps the chop
   }else{
     const on=L?!dn.on[id]:down;
     if(on&&!dn.on[id])dn.on[id]={t0:ctx?ctx.currentTime:0};else if(!on)delete dn.on[id];
@@ -2878,10 +2907,13 @@ function dnbPress(id,down){
   }
   dnbDuck();dnbPaint();
 }
-function dnbAllOff(){dn.held=[];dn.brk=null;dn.on={};dn.next=null;dnbReese(false);dnbDuck();dnbPaint();}
+function dnbSetChop(c){if(c===(dn.chopPend!==undefined?dn.chopPend:dn.chop))return;dn.chopPend=c;dnbPaint();}
+function dnbAllOff(){dn.held=[];dn.brk=null;dn.on={};dn.next=null;dn.chop=0;dn.chopPend=undefined;dn.rollShift=0;dnbReese(false);dnbDuck();dnbPaint();}
 function dnbPaint(){
   if(!UI.dnbPads)return;
-  UI.dnbPads.forEach(p=>{const id=p.dataset.d;p.classList.toggle('on',dn.brk===id||!!dn.on[id]||dn.flash===id);});
+  const ch=dn.chopPend!==undefined?dn.chopPend:dn.chop,rs=dn.rollShift||0;
+  UI.dnbPads.forEach(p=>{const id=p.dataset.d,P=DNB_PADS.find(q=>q.id===id),sm=p.querySelector('small');p.classList.toggle('on',dn.brk===id||!!dn.on[id]||dn.flash===id);
+    const t=P.kind==='brk'&&dn.brk===id&&ch?DNB_CHOP[ch]:P.kind==='roll'&&dn.on[id]&&rs?(rs>0?'faster '+'+'.repeat(rs):'slower '+'−'.repeat(-rs)):P.s;if(sm.textContent!==t)sm.textContent=t;});
   const r=getV('dnb','rate');UI.dnbRate.forEach(b=>b.classList.toggle('sel',b.dataset.r===r));
 }
 function dnbTick(){ // step lights + the drums' tempo readout, from the animation loop
@@ -3004,8 +3036,24 @@ const MODS={
       `<div class="dnbpads">${DNB_PADS.map(p=>`<div class="pad" data-d="${p.id}"><span>${p.l}</span><small>${p.s}</small></div>`).join('')}</div></div>`;
     UI.dnbPads=[...mb.querySelectorAll('.dnbpads .pad')];UI.dnbRate=[...mb.querySelectorAll('.dnbrate button')];UI.dnbLeds=[...mb.querySelectorAll('.dnbleds b')];UI.dnbBpm=mb.querySelector('.dnbbpm');dn.led=-2;dn.shown=-1;
     UI.dnbPads.forEach(p=>{let pid=null;const id=p.dataset.d;
-      p.addEventListener('pointerdown',e=>{e.preventDefault();if(pid!=null)return;pid=e.pointerId;p.setPointerCapture(pid);if(!ctx)ensureAudio().catch(er=>{audioErr=er;});dnbPress(id,true);});
-      const end=e=>{if(e.pointerId!==pid)return;pid=null;dnbPress(id,false);};
+      let y0=0,cur=id;
+      p.addEventListener('pointerdown',e=>{e.preventDefault();if(pid!=null)return;pid=e.pointerId;p.setPointerCapture(pid);y0=e.clientY;cur=id;if(!ctx)ensureAudio().catch(er=>{audioErr=er;});dnbPress(id,true);});
+      p.addEventListener('pointermove',e=>{
+        if(e.pointerId!==pid)return;const kind=DNB_PADS.find(q=>q.id===cur).kind,dist=getV('dnb','cdist');
+        if(kind==='brk'){
+          const row=UI.dnbPads.find(q=>q.dataset.d===cur).offsetTop; // like Stutter: same row, judged left/right only
+          const t=UI.dnbPads.find(q=>{if(q.offsetTop!==row||DNB_PADS.find(z=>z.id===q.dataset.d).kind!=='brk')return false;const r=q.getBoundingClientRect();return e.clientX>=r.left&&e.clientX<r.right;});
+          if(t&&t.dataset.d!==cur){ // slid onto another break
+            const old=cur;cur=t.dataset.d;
+            if(fx.dnb.latch){dn.held=[cur];dn.brk=cur;if(dn.chop)dn.chopPend=dn.chop;dnbPaint();}
+            else{dnbPress(cur,true);dnbPress(old,false);}
+          }
+          if(dn.brk===cur)dnbSetChop(Math.max(-3,Math.min(4,Math.round((y0-e.clientY)/dist))));
+        }else if(kind==='roll'){const s=Math.max(-3,Math.min(4,Math.round((y0-e.clientY)/dist)));if(s!==(dn.rollShift||0)){dn.rollShift=s;dnbPaint();}}
+      });
+      const end=e=>{if(e.pointerId!==pid)return;pid=null;const kind=DNB_PADS.find(q=>q.id===cur).kind;
+        if(kind==='brk')dnbSetChop(0);if(kind==='roll'&&dn.rollShift){dn.rollShift=0;dnbPaint();}
+        dnbPress(cur,false);};
       p.addEventListener('pointerup',end);p.addEventListener('pointercancel',end);p.addEventListener('contextmenu',e=>e.preventDefault());});
     UI.dnbRate.forEach(b=>{b.addEventListener('pointerdown',e=>e.stopPropagation());b.addEventListener('click',()=>setV('dnb','rate',b.dataset.r));});
     dnbPaint();

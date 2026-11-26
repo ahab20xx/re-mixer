@@ -185,6 +185,11 @@ Read the diffs, not the subject lines.
 
 Newest first. All of this is in `main`.
 
+- Drum & bass chops: hold a break and slide up (CHOP edit, 1/8 repeat, 1/16
+  and 1/32 stutter with rising pitch) or down (half-time, reverse, 3-step
+  triplet loop); slide sideways in the same row to swap breaks mid-chop.
+  Sliding on SNARE/HATS shifts roll speed. Chop changes land on the next
+  step (`dn.chopPend`). Setting `cdist` = pixels per chop level.
 - PS DRUM & BASS module (`dnb`). Four two-bar breaks
   (`DNB_PAT`), snare and hat rolls, a Reese bass and a sub drop, all
   synthesized in the file, rendered at 22 kHz / 10-bit for the PS1 feel.
