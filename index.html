@@ -732,7 +732,7 @@ const LOCK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-wi
 $$('.latch[data-fx]').forEach(b=>b.innerHTML=LOCK);
 
 let vid=null,vidB=null,posQ=0,rateR=1,vidLevel=0;
-const dn={on:{},held:[],brk:null,chop:0,chop0:0,chopBase:0,chopPend:undefined,rollShift:0,brk0:null,ready:false,buf:{},next:null,rollNext:{},free:null,rz:null,oh:null,ducked:false,flash:null,led:-2,shown:-1},aq={},ac={},sy={},an={voices:[],parts:[]};let ctx=null,node=null,hp=null,hs=null,comp=null,audioErr=null,fxHP,fxLP,stHP,stLP,echoSend,echoDelay,echoFb,revSend,conv,revPre,revLP,revHP,mPan=null,mVol=null,recDest=null,analyser=null,scopeBuf=null;
+const dn={down:new Set(),on:{},held:[],brk:null,chop:0,chop0:0,chopBase:0,chopPend:undefined,rollShift:0,brk0:null,ready:false,buf:{},next:null,rollNext:{},free:null,rz:null,oh:null,ducked:false,flash:null,led:-2,shown:-1},aq={},ac={},sy={},an={voices:[],parts:[]};let ctx=null,node=null,hp=null,hs=null,comp=null,audioErr=null,fxHP,fxLP,stHP,stLP,echoSend,echoDelay,echoFb,revSend,conv,revPre,revLP,revHP,mPan=null,mVol=null,recDest=null,analyser=null,scopeBuf=null;
 let sr=48000,lenS=0,peaks=null;
 let bpm=120,offSec=0,detected={bpm:120,off:0},speed=1,ghostR=1; // speed: song playback speed (1 = original); ghostR: how fast the beat timeline is moving right now
 let playing=false,posS=0,posAt=0,wakeLock=null;
@@ -1045,7 +1045,7 @@ $('#sheet').addEventListener('click',e=>{
 });
 
 /* ---------- waveform ---------- */
-const BUILD='2026-11-26 10:30 UTC'; // bumped on every save, so a phone can prove which copy it is running
+const BUILD='2026-11-26 10:45 UTC'; // bumped on every save, so a phone can prove which copy it is running
 {
   const dlg=$('#about');
   $('#buildStamp').textContent='build '+BUILD;
@@ -1287,7 +1287,7 @@ function holdPad(el,down,up){
   el.addEventListener('contextmenu',e=>e.preventDefault());
 }
 function toggleable(el,key,apply){
-  holdPad(el,()=>{const F=fx[key];apply(F.latch?!F.on:true);},()=>{if(!fx[key].latch)apply(false);});
+  holdPad(el,()=>{const F=fx[key];F.down=true;apply(F.latch?!F.on:true);},()=>{fx[key].down=false;if(!fx[key].latch)apply(false);});
 }
 
 /* ---------- font picker ---------- */
@@ -2043,6 +2043,7 @@ function setStut(div){
 function allOff(){
   dnbAllOff();
   for(const k of ['xy','xy2','gate','pump','duck','tape','rev','stut','pitch'])fx[k].latch=false;
+  for(const k of ['pump','duck','tape','rev'])fx[k].down=false;fx.pitch.down=0;fx.stut.held=[];dn.down.clear();
   fx.xy.on=false;fx.xy2.on=false;pushFX();
   if(fx.gate.on){fx.gate.on=false;sendGate();}
   if(fx.pump.on)setPump(false);
@@ -2065,13 +2066,14 @@ function toggleLatch(k){
     if(k==='gate'&&!F.hold){F.on=false;sendGate();}
     if((k==='aquaM'||k==='acidM')&&!F.hold){F.on=false;pushFX();}
     if(k==='angelM')F.on=F.touches.size>0||F.all;
-    if(k==='pump')setPump(false);
-    if(k==='duck')setDuck(false);
-    if(k==='tape'&&F.on)setTape(false);
-    if(k==='rev'&&F.on)setRev(false);
-    if(k==='stut'){F.held=[];setStut(0);}
-    if(k==='pitch')setPitch(null);
-    if(k==='dnb')dnbAllOff();
+    // a finger still on the pad keeps the effect going until it lets go
+    if(k==='pump'&&!F.down)setPump(false);
+    if(k==='duck'&&!F.down)setDuck(false);
+    if(k==='tape'&&F.on&&!F.down)setTape(false);
+    if(k==='rev'&&F.on&&!F.down)setRev(false);
+    if(k==='stut')setStut(F.held.length?F.held[F.held.length-1]:0);
+    if(k==='pitch'&&!F.down)setPitch(null);
+    if(k==='dnb')dnbUnlatch();
   }
 }
 
@@ -2941,6 +2943,12 @@ function dnbPress(id,down){
   dnbDuck();dnbPaint();
 }
 function dnbSetChop(c){if(c===(dn.chopPend!==undefined?dn.chopPend:dn.chop))return;dn.chopPend=c;dnbPaint();}
+function dnbUnlatch(){ // lock released: keep only what a finger is still holding
+  const brks=[...dn.down].filter(i=>DNB_PADS.find(q=>q.id===i).kind==='brk');dn.held=brks;
+  const nb=brks.length?brks[brks.length-1]:null;if(nb!==dn.brk){dn.brk=nb;if(!nb){dn.next=null;dn.brk0=null;dn.chop=0;dn.chopPend=undefined;}}
+  for(const id of Object.keys(dn.on))if(!dn.down.has(id)){delete dn.on[id];if(id==='rz')dnbReese(false);}
+  dnbDuck();dnbPaint();
+}
 function dnbAllOff(){dn.held=[];dn.brk=null;dn.on={};dn.next=null;dn.chop=0;dn.chopPend=undefined;dn.rollShift=0;dnbReese(false);dnbDuck();dnbPaint();}
 function dnbPaint(){
   if(!UI.dnbPads)return;
@@ -2980,8 +2988,9 @@ const MODS={
       p.addEventListener('pointerdown',e=>{
         e.preventDefault();if(pid!=null)return;pid=e.pointerId;p.setPointerCapture(pid);y0=e.clientY;cur=+p.dataset.div;
         const S=fx.stut;
+        S.held=S.held.filter(d=>d!==cur);S.held.push(cur); // fingers down, tracked even when locked
         if(S.latch)setStut(S.active===cur?0:cur);
-        else{S.held=S.held.filter(d=>d!==cur);S.held.push(cur);setStut(cur);}
+        else setStut(cur);
         if(fx.stut.active===cur)stutSlide(0,p);
       });
       p.addEventListener('pointermove',e=>{
@@ -2992,7 +3001,7 @@ const MODS={
         const t=UI.stutPads.find(q=>{if(q.offsetTop!==row)return false;const r=q.getBoundingClientRect();return e.clientX>=r.left&&e.clientX<r.right;});
         if(t&&+t.dataset.div!==cur){
           const nd=+t.dataset.div;
-          if(!S.latch){S.held=S.held.filter(d=>d!==cur&&d!==nd);S.held.push(nd);}
+          S.held=S.held.filter(d=>d!==cur&&d!==nd);S.held.push(nd);
           cur=nd;setStut(nd);
         }
         // slide up/down = bend
@@ -3001,8 +3010,8 @@ const MODS={
       });
       const end=e=>{
         if(e.pointerId!==pid)return;pid=null;
-        const S=fx.stut;if(S.latch)return;
-        S.held=S.held.filter(d=>d!==cur);setStut(S.held.length?S.held[S.held.length-1]:0);
+        const S=fx.stut;S.held=S.held.filter(d=>d!==cur);if(S.latch)return;
+        setStut(S.held.length?S.held[S.held.length-1]:0);
       };
       p.addEventListener('pointerup',end);p.addEventListener('pointercancel',end);
       p.addEventListener('contextmenu',e=>e.preventDefault());
@@ -3015,7 +3024,7 @@ const MODS={
       let pid=null;
       p.addEventListener('pointerdown',e=>{
         e.preventDefault();if(pid!=null)return;pid=e.pointerId;p.setPointerCapture(pid);
-        const st=+p.dataset.st,P=fx.pitch;
+        const st=+p.dataset.st,P=fx.pitch;P.down=(P.down||0)+1;
         setPitch(P.latch&&P.active===st?null:st);
       });
       p.addEventListener('pointermove',e=>{
@@ -3023,7 +3032,7 @@ const MODS={
         const t=UI.pitchPads.find(q=>{const r=q.getBoundingClientRect();return e.clientX>=r.left&&e.clientX<r.right&&e.clientY>=r.top&&e.clientY<r.bottom;});
         if(t&&+t.dataset.st!==fx.pitch.active)setPitch(+t.dataset.st);
       });
-      const end=e=>{if(e.pointerId!==pid)return;pid=null;if(!fx.pitch.latch)setPitch(null);};
+      const end=e=>{if(e.pointerId!==pid)return;pid=null;fx.pitch.down=Math.max(0,(fx.pitch.down||1)-1);if(!fx.pitch.latch&&!fx.pitch.down)setPitch(null);};
       p.addEventListener('pointerup',end);p.addEventListener('pointercancel',end);
       p.addEventListener('contextmenu',e=>e.preventDefault());
     });}},
@@ -3070,21 +3079,21 @@ const MODS={
     UI.dnbPads=[...mb.querySelectorAll('.dnbpads .pad')];UI.dnbRate=[...mb.querySelectorAll('.dnbrate button')];UI.dnbLeds=[...mb.querySelectorAll('.dnbleds b')];UI.dnbBpm=mb.querySelector('.dnbbpm');dn.led=-2;dn.shown=-1;
     UI.dnbPads.forEach(p=>{let pid=null;const id=p.dataset.d;
       let y0=0,cur=id;
-      p.addEventListener('pointerdown',e=>{e.preventDefault();if(pid!=null)return;pid=e.pointerId;p.setPointerCapture(pid);y0=e.clientY;cur=id;if(!ctx)ensureAudio().catch(er=>{audioErr=er;});dnbPress(id,true);});
+      p.addEventListener('pointerdown',e=>{e.preventDefault();if(pid!=null)return;pid=e.pointerId;p.setPointerCapture(pid);y0=e.clientY;cur=id;dn.down.add(id);if(!ctx)ensureAudio().catch(er=>{audioErr=er;});dnbPress(id,true);});
       p.addEventListener('pointermove',e=>{
         if(e.pointerId!==pid)return;const kind=DNB_PADS.find(q=>q.id===cur).kind,dist=getV('dnb','cdist');
         if(kind==='brk'){
           const row=UI.dnbPads.find(q=>q.dataset.d===cur).offsetTop; // like Stutter: same row, judged left/right only
           const t=UI.dnbPads.find(q=>{if(q.offsetTop!==row||DNB_PADS.find(z=>z.id===q.dataset.d).kind!=='brk')return false;const r=q.getBoundingClientRect();return e.clientX>=r.left&&e.clientX<r.right;});
           if(t&&t.dataset.d!==cur){ // slid onto another break
-            const old=cur;cur=t.dataset.d;
+            const old=cur;cur=t.dataset.d;dn.down.delete(old);dn.down.add(cur);
             if(fx.dnb.latch){dn.held=[cur];dn.brk=cur;if(dn.chop)dn.chopPend=dn.chop;dnbPaint();}
             else{dnbPress(cur,true);dnbPress(old,false);}
           }
           if(dn.brk===cur)dnbSetChop(Math.max(-3,Math.min(4,Math.round((y0-e.clientY)/dist))));
         }else if(kind==='roll'){const s=Math.max(-3,Math.min(4,Math.round((y0-e.clientY)/dist)));if(s!==(dn.rollShift||0)){dn.rollShift=s;dnbPaint();}}
       });
-      const end=e=>{if(e.pointerId!==pid)return;pid=null;const kind=DNB_PADS.find(q=>q.id===cur).kind;
+      const end=e=>{if(e.pointerId!==pid)return;pid=null;dn.down.delete(cur);const kind=DNB_PADS.find(q=>q.id===cur).kind;
         if(kind==='brk')dnbSetChop(0);if(kind==='roll'&&dn.rollShift){dn.rollShift=0;dnbPaint();}
         dnbPress(cur,false);};
       p.addEventListener('pointerup',end);p.addEventListener('pointercancel',end);p.addEventListener('contextmenu',e=>e.preventDefault());});
@@ -3502,7 +3511,8 @@ function buildLayout(){
     s.querySelector('.ov').onclick=()=>{if(performance.now()<ignoreClick)return;selSlot=i;renderEdit();};
     fxEl.insertBefore(s,panelEl);slotEls.push(s);ro.observe(s);
   });
-  $$('#fx .latch[data-fx]').forEach(b=>b.onclick=()=>toggleLatch(b.dataset.fx));
+  // react on touch-down: phones only send a 'click' for the first finger, so a lock tapped while another finger holds an effect was ignored
+  $$('#fx .latch[data-fx]').forEach(b=>{b.onclick=null;b.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();toggleLatch(b.dataset.fx);});b.addEventListener('contextmenu',e=>e.preventDefault());});
   renderEdit();refreshCards();refreshMenus();closeMenu();
   if(editing&&slotEls[selSlot])slotEls[selSlot].scrollIntoView({block:'nearest'});
 }

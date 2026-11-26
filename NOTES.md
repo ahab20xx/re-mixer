@@ -185,6 +185,12 @@ Read the diffs, not the subject lines.
 
 Newest first. All of this is in `main`.
 
+- Lock buttons react on `pointerdown` (phones send `click` only for the first
+  finger, so a lock tapped while holding an effect was ignored). Turning a
+  lock off keeps whatever a finger still holds until it lets go: `fx.*.down`
+  for Pump/Duck/Reverse/Tape, `fx.pitch.down`, `fx.stut.held` (now tracked in
+  lock mode too), `dn.down` + `dnbUnlatch()`. Tested with simulated
+  multi-touch (CDP) — note CDP can't lift one finger of two.
 - Aqua: touching the pad no longer plays bubble notes by default (visual
   bubbles still appear). Setting `aqTap` "Sound on touch" turns it back on.
 - Song speed. The worklet has `tempo` (message `speed`), and **the ghost
