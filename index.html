@@ -149,7 +149,9 @@ font-weight:700;font-size:13px;letter-spacing:.3px;touch-action:none;text-align:
 #acPick button.on{box-shadow:var(--sunken);background:var(--dither);font-weight:700}.acsteps b.acc{color:#d8ff8a}.acsteps b.mute{background:#300;color:#a55}.acsteps b.rest{color:#3a5020}
 .acmain{flex:1;display:flex;gap:4px;min-height:0}.acmain .xyc{flex:1}
 .visbtn.on{box-shadow:var(--sunken)!important;background:var(--dither)!important;color:#000080}
-.acbtns{display:flex;flex-direction:column;gap:4px;width:74px}.acbtns .pad{flex:1;min-height:0;font-size:12px}
+.acbtns{display:flex;flex-direction:column;gap:4px;width:74px}
+.acid303[data-btns="off"] .acbtns{display:none}
+.acid303[data-btns="acc"] .acbtns [data-h="sld"],.acid303[data-btns="sld"] .acbtns [data-h="acc"]{display:none}.acbtns .pad{flex:1;min-height:0;font-size:12px}
 .slot.tall .ppads{grid-template-columns:repeat(var(--pct,2),1fr)}
 .ppads .pad{font-size:13px;min-height:28px}
 .chip{font-size:11px;padding:4px 6px;color:#000}
@@ -992,7 +994,7 @@ $('#sheet').addEventListener('click',e=>{
 });
 
 /* ---------- waveform ---------- */
-const BUILD='2026-11-26 05:26 UTC'; // bumped on every save, so a phone can prove which copy it is running
+const BUILD='2026-11-26 05:47 UTC'; // bumped on every save, so a phone can prove which copy it is running
 {
   const dlg=$('#about');
   $('#buildStamp').textContent='build '+BUILD;
@@ -1363,6 +1365,7 @@ const FXSPEC={
     {sub:'Synth'},
     {k:'acSyn',l:'Acid synth',min:0,max:100,v:40,f:pct},
     {k:'acWave',l:'Wave',chips:[['Saw','sawtooth'],['Square','square']],v:'sawtooth'},
+    {k:'acBtns',l:'Perform pads',chips:[['Hidden','off'],['Both','both'],['Accent','acc'],['Slide','sld']],v:'off'},
     {k:'acPat',l:'Scale (acid + aqua)',chips:[['Song','song'],['Minor pent.','pent'],['Phrygian','phry'],['Blues','blues'],['Dorian','dorian'],['Root + 5th','octave']],v:'song'},
     {k:'acKey',l:'Key (acid + aqua)',min:-1,max:11,v:-1,f:v=>v<0?'Auto ('+NOTE[songKey]+(songAna&&songAna.minor?'m':'')+')':NOTE[v]},
     {sub:'Look'},
@@ -2701,6 +2704,12 @@ const MODS={
       <div style="--c:var(--duck);--ic:#ff5a00"><div class="sub"><span>DUCK</span><button class="latch" data-fx="duck">${LOCK}</button></div><div class="pad" data-p="duck"><span class="hl">HOLD</span><span class="nm">DUCK</span></div></div></div>`;
     UI.pads.pump=mb.querySelector('[data-p=pump]');UI.pads.duck=mb.querySelector('[data-p=duck]');
     toggleable(UI.pads.pump,'pump',setPump);toggleable(UI.pads.duck,'duck',setDuck);}},
+  rt:{name:'REVERSE · TAPE',ic:'#ffe000',c:'var(--rev)',build(mb){
+    mb.innerHTML=`<div class="duo">
+      <div style="--c:var(--rev);--ic:#ffe000"><div class="sub"><span>REVERSE</span><button class="latch" data-fx="rev">${LOCK}</button></div><div class="pad" data-p="rev"><span class="hl">HOLD</span><span class="nm">REVERSE</span></div></div>
+      <div style="--c:var(--tape);--ic:#ff0000"><div class="sub"><span>TAPE</span><button class="latch" data-fx="tape">${LOCK}</button></div><div class="pad" data-p="tape"><span class="hl">HOLD</span><span class="nm">STOP</span></div></div></div>`;
+    UI.pads.rev=mb.querySelector('[data-p=rev]');UI.pads.tape=mb.querySelector('[data-p=tape]');
+    toggleable(UI.pads.rev,'rev',setRev);toggleable(UI.pads.tape,'tape',setTape);}},
   stut:{name:'STUTTER',ic:'#ff00ff',c:'var(--stut)',latch:'stut',build(mb){
     mb.innerHTML='<div class="spads">'+STUT_DIVS.map(([d,l])=>`<div class="pad" data-div="${d}"><span>${l}</span><small></small></div>`).join('')+'</div>';
     UI.stutPads=[...mb.querySelectorAll('.pad')];
@@ -3084,6 +3093,11 @@ function acidPicker(i,el){
 }
 function drawAcidMod(){
   const c=UI.acidCan;fitCanvas(c);const W=c.width,H=c.height;if(!W||!H)return;const g=c.getContext('2d'),d=devicePixelRatio||1,F=fx.acidM;
+  { const box=c.closest('.acid303'),b=getV('fx','acBtns')||'off';
+    if(box&&box.dataset.btns!==b){box.dataset.btns=b;
+      if(b==='off'||b==='sld'){F.acc=false;}
+      if(b==='off'||b==='acc'){F.sld=false;}
+      box.querySelectorAll('[data-h]').forEach(p=>{if(!F[p.dataset.h])p.classList.remove('on');});} }
   g.fillStyle='#061000';g.fillRect(0,0,W,H);
   drawScene(g,W,H,d,{acid:F.on?.55:.25},'acidM');
   g.fillStyle='rgba(0,0,0,.45)';g.fillRect(0,0,W,H);
@@ -3324,7 +3338,7 @@ function openPicker(i){
   const items=Object.keys(MODS).map(id=>{
     const j=layout.findIndex(e=>e.id===id);
     if(i<0&&j>=0)return '';
-    const note=j===i?'here now':j>=0?'swaps places':'';
+    const note=j<0?'':j===i?'here now':'swaps places';
     return `<button class="pick" data-id="${id}"><span><i style="background:${MODS[id].c}"></i>${MODS[id].name}</span><em>${note}</em></button>`;
   }).join('');
   $('#pickTitle').textContent=i<0?'Add a module':'Change module';
